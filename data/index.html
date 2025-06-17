@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpectraFrame Control</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div class="container">
+    <h1>SpectraFrame Control</h1>
+
+    <div class="tab-navigation" role="tablist" aria-label="SpectraFrame Sections">
+      <button id="ditheringTabButton" class="tab-button" data-tab="upload" role="tab" aria-selected="false"
+        aria-controls="upload">Display</button>
+      <button id="configTabButton" class="tab-button" data-tab="config" role="tab" aria-selected="false"
+        aria-controls="config">WiFi</button>
+      <button id="otaTabButton" class="tab-button" data-tab="ota" role="tab" aria-selected="false"
+        aria-controls="ota">Update</button>
+    </div>
+
+    <div id="upload" class="tab-content" role="tabpanel" aria-labelledby="ditheringTabButton">
+      <h2>Image Dithering & Upload</h2>
+      <p class="intro-text">Select an image (common formats or raw .bin) and apply dithering and adjustments for the
+        display.</p>
+      <input type="file" id="uploadInput" accept="image/*,.bin">
+
+      <div class="controls-row">
+        <select id="ditherAlgorithmSelect">
+          <option value="floyd-steinberg" selected>Floyd-Steinberg</option>
+          <option value="atkinson">Atkinson</option>
+          <option value="blue-noise">Blue Noise</option>
+          <option value="none">None (Quantize Only)</option>
+        </select>
+        <select id="colorPaletteSelect">
+          <option value="SPECTRA6">Spectra 6-Color</option>
+          <option value="MONOCHROME">Black & White</option>
+        </select>
+      </div>
+
+      <div class="controls-row">
+        <label for="scalingOption">Scaling:</label>
+        <select id="scalingOption">
+          <option value="cover" selected>Cover</option>
+          <option value="fit">Fit</option>
+        </select>
+        <button id="rotateSourceButton" class="btn-secondary">Rotate 90°</button>
+      </div>
+
+      <div class="image-adjustments">
+        <div>
+          <label for="brightnessSlider">Brightness</label>
+          <input type="range" id="brightnessSlider" min="-100" max="100" value="0" step="1">
+          <span id="brightnessValue">0</span>
+          <button id="resetBrightness" class="btn-secondary">Reset</button>
+        </div>
+        <div>
+          <label for="contrastSlider">Contrast</label>
+          <input type="range" id="contrastSlider" min="0" max="400" value="100" step="1">
+          <span id="contrastValue">1.00</span>
+          <button id="resetContrast" class="btn-secondary">Reset</button>
+        </div>
+        <div>
+          <label for="gammaSlider">Gamma</label>
+          <input type="range" id="gammaSlider" min="10" max="300" value="100" step="1">
+          <span id="gammaValue">1.00</span>
+          <button id="resetGamma" class="btn-secondary">Reset</button>
+        </div>
+      </div>
+
+      <div class="controls-row">
+        <input type="checkbox" id="fitCanvasToScreenCheckbox" checked>
+        <label for="fitCanvasToScreenCheckbox">Fit Preview to Screen</label>
+      </div>
+
+      <div class="action-buttons-group controls-row">
+        <button id="uploadToDeviceButton">Upload to Device</button>
+        <input type="checkbox" id="advancedToggleCheckbox">
+        <label for="advancedToggleCheckbox">Show Advanced</label>
+      </div>
+
+      <div id="advancedControlsContainer" style="display: none;">
+        <div class="action-buttons-group controls-row">
+          <button id="download">Download Image (PNG)</button>
+          <button id="downloadCArrayButton">Download C Array</button>
+          <button id="downloadBinButton">Download Image (BIN)</button>
+        </div>
+      </div>
+
+      <section class="status">
+        <p id="statusInfo"></p>
+        <progress id="uploadProgressBar" value="0" max="100"></progress>
+      </section>
+
+      <canvas id="canvas" width="0" height="0"></canvas>
+
+      <footer>
+        <p>
+          Dithering tool adapted from the utility found at
+          <a href="https://www.e-paper-display.com/dithering.html" target="_blank"
+            rel="noopener noreferrer">www.e-paper-display.com</a> by Zhang Hui.
+        </p>
+      </footer>
+    </div>
+
+    <div id="config" class="tab-content" role="tabpanel" aria-labelledby="configTabButton">
+      <h2>WiFi Configuration</h2>
+      <form id="wifiConfigForm" class="config-form-container">
+        <div>
+          <label for="wifiSsid">SSID:</label>
+          <input type='text' id='wifiSsid' name='ssid' required>
+        </div>
+        <div>
+          <label for="wifiPassword">Password:</label>
+          <input type='password' id='wifiPassword' name='password'>
+        </div>
+        <input type='submit' value='Save & Restart'>
+      </form>
+      
+      <section class="status">
+        <p id="wifiConfigStatus"></p>
+      </section>
+    </div>
+
+    <div id="ota" class="tab-content" role="tabpanel" aria-labelledby="otaTabButton">
+      <h2>OTA Updater</h2>
+      <p>Select the update type and upload the corresponding .bin file for the SpectraFrame.</p>
+      
+      <section id="otaUpdateTypeSection">
+        <label>
+          <input type="radio" name="otaUpdateType" value="firmware" checked> Firmware
+        </label>
+        <label>
+          <input type="radio" name="otaUpdateType" value="filesystem"> Filesystem
+        </label>
+      </section>
+    
+      <form id="firmwareUploadForm" enctype="multipart/form-data">
+        <input type="file" name="updateFile" id="updateFile" accept=".bin" required><br><br>
+      <p class="warning"><strong>Caution:</strong> Uploading the wrong file can brick the device. Filesystem updates will erase all settings and data.</p>
+        <button type="submit">Upload & Flash</button>
+      </form>
+
+      <section class="status">
+        <p id="otaStatus"></p>
+        <progress id="otaProgressBar" value="0" max="100"></progress>
+      </section>
+
+    </div>
+
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+
+</html>
