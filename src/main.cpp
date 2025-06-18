@@ -46,7 +46,7 @@ HibernationManager hibernationManager(INACTIVITY_TIMEOUT_MS);
 
 // --- Touch Input Configuration for active mode ---
 const int TOUCH_PIN = GPIO_NUM_4;
-const int TOUCH_THRESHOLD = 58000; // Threshold for touchRead(), lower is more sensitive
+const int TOUCH_THRESHOLD = 52000; // Threshold for touchRead(), lower is more sensitive
 bool lastTouchState = false;       // To detect changes in touch state
 
 void setupDisplay()

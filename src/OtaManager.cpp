@@ -122,13 +122,17 @@ void OtaManager::handleFirmwareUpload(AsyncWebServerRequest *request, const Stri
     if (otaInProgress)
     { // Proceed only if no errors occurred during chunks
       Debugf("OTA %s Finalizing. Total bytes: %u / %u\n", otaTypeString.c_str(), otaCurrentSize, otaTotalSize);
+      // Capture otaTypeString for the lambda, as it might go out of scope if the function returns before the lambda executes.
+      String finalOtaTypeString = otaTypeString;
       if (Update.end(true))
       {
-        Debugf("OTA %s Update Successful! Rebooting...\n", otaTypeString.c_str());
+        Debugf("OTA %s Update Successful! Scheduling reboot after response.\n", finalOtaTypeString.c_str());
         _ledManager.setMode(LedMode::LED_MODE_OTA_SUCCESS);
-        request->send(200, "text/plain", otaTypeString + " Update Successful! Device is rebooting.");
-        delay(2000); // Give time for the message to be sent
-        ESP.restart();
+        request->onDisconnect([finalOtaTypeString]() {
+          Debugf("OTA %s response sent. Rebooting NOW.\n", finalOtaTypeString.c_str());
+          ESP.restart();
+        });
+        request->send(200, "text/plain", finalOtaTypeString + " Update Successful! Device is rebooting.");
       }
       else
       {
