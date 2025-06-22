@@ -33,6 +33,16 @@ export function getDomElements() {
     wifiSsidInput: document.getElementById('wifiSsid'),
     wifiPasswordInput: document.getElementById('wifiPassword'),
     wifiConfigStatus: document.getElementById('wifiConfigStatus'),
+    // Device Settings in Config Tab
+    touchValueSpan: document.getElementById('touchValue'),
+    touchValueBar: document.getElementById('touchValueBar'),
+    touchThresholdInput: document.getElementById('touchThresholdInput'),
+    saveTouchThresholdButton: document.getElementById('saveTouchThresholdButton'),
+    touchConfigStatus: document.getElementById('touchConfigStatus'),
+    sleepDelayInput: document.getElementById('sleepDelayInput'),
+    saveSleepDelayButton: document.getElementById('saveSleepDelayButton'),
+    sleepConfigStatus: document.getElementById('sleepConfigStatus'),
+    sleepNowButton: document.getElementById('sleepNowButton'),
 
     // OTA Tab Elements
     otaConfigForm: document.getElementById('firmwareUploadForm'),
@@ -57,6 +67,10 @@ export function initTabs() {
       const isActive = button.dataset.tab === tabIdToShow;
       button.classList.toggle('active', isActive);
       button.setAttribute('aria-selected', isActive.toString());
+      if (isActive) {
+        // Dispatch a custom event that main.js can listen to
+        document.dispatchEvent(new CustomEvent('tabShown', { detail: { tabId: tabIdToShow } }));
+      }
     });
   }
 
@@ -109,6 +123,11 @@ export function initEventListeners(dom, handlers) {
 
   // Config Tab
   dom.wifiConfigForm.addEventListener('submit', handlers.onWifiConfigSave);
+
+  // Device Settings in Config Tab
+  dom.saveTouchThresholdButton.addEventListener('click', handlers.onSaveTouchThreshold);
+  dom.saveSleepDelayButton.addEventListener('click', handlers.onSaveSleepDelay);
+  dom.sleepNowButton.addEventListener('click', handlers.onSleepNow);
 
   // OTA Tab
   dom.otaConfigForm.addEventListener('submit', handlers.onFirmwareUpload);

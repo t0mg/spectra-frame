@@ -11,11 +11,13 @@ public:
     void resumeAndReset();
     bool shouldGoToSleep();
     void goToDeepSleep();
+    void setInactivityTimeout(unsigned long timeoutMs);
+    bool isPaused() const;
 
 private:
     unsigned long inactivityTimeoutMillis;
     unsigned long lastActivityTimeMillis;
-    bool isPaused;
+    bool paused;
 };
 
 #endif // HIBERNATION_MANAGER_H

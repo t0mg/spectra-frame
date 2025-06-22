@@ -17,9 +17,12 @@
 const char *AP_SSID = "SpectraFrameSetup";                                  // Provided in the AP QR code
 const char *AP_PASSWORD = "spectra1234";                                    // Provided in the AP QR code
 const char *CONFIG_FILE = "/config.json";                                   // LittleFS path for persisting configuration
-const char *UPLOADED_IMAGE_PATH = "/image.bin";                             // LittleFS path for uploaded images                                        // 0-255
-const unsigned long INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;                  // 5 minutes
+const char *UPLOADED_IMAGE_PATH = "/image.bin";                             // LittleFS path for uploaded images
 const UDOUBLE FULL_IMAGE_SIZE = (EPD_13IN3E_WIDTH / 2) * EPD_13IN3E_HEIGHT; // 1200x1600 4bpp
+
+// Default values for configurable parameters
+const unsigned long DEFAULT_INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const int DEFAULT_TOUCH_THRESHOLD = 52000; // Touch threshold: a touch is detected if touchRead() < this value. Lower threshold means less sensitive.
 
 // --- Global Objects ---
 AsyncWebServer server(80);
@@ -33,6 +36,8 @@ struct Config
 {
   String ssid;
   String password;
+  unsigned long inactivityTimeoutMs;
+  int touchThreshold;
   // Add other settings here, e.g., default display mode, update interval
 };
 Config currentConfig;
@@ -41,13 +46,12 @@ Config currentConfig;
 DisplayManager *displayMgr = nullptr; // Global pointer for DisplayManager
 bool newImageReadyForDisplay = false; // Flag to signal main loop
 
-// --- Hibernation Configuration ---
-HibernationManager hibernationManager(INACTIVITY_TIMEOUT_MS);
+// --- Hibernation Configuration (initialized with default, then updated from config) ---
+HibernationManager hibernationManager(DEFAULT_INACTIVITY_TIMEOUT_MS);
 
 // --- Touch Input Configuration for active mode ---
 const int TOUCH_PIN = GPIO_NUM_4;
-const int TOUCH_THRESHOLD = 52000; // Threshold for touchRead(), lower is more sensitive
-bool lastTouchState = false;       // To detect changes in touch state
+bool lastTouchState = false; // To detect changes in touch state
 
 void setupDisplay()
 {
@@ -71,6 +75,11 @@ void setupDisplay()
 // --- Configuration and WiFi Functions ---
 bool loadConfiguration()
 {
+  // Set defaults first
+  currentConfig.ssid = "";
+  currentConfig.password = "";
+  currentConfig.inactivityTimeoutMs = DEFAULT_INACTIVITY_TIMEOUT_MS;
+  currentConfig.touchThreshold = DEFAULT_TOUCH_THRESHOLD;
   if (LittleFS.exists(CONFIG_FILE))
   {
     File configFile = LittleFS.open(CONFIG_FILE, "r");
@@ -93,8 +102,12 @@ bool loadConfiguration()
 
     currentConfig.ssid = doc["ssid"].as<String>();
     currentConfig.password = doc["password"].as<String>();
+    currentConfig.inactivityTimeoutMs = doc["inactivityTimeoutMs"] | DEFAULT_INACTIVITY_TIMEOUT_MS;
+    currentConfig.touchThreshold = doc["touchThreshold"] | DEFAULT_TOUCH_THRESHOLD;
     Debug("Config loaded: SSID=");
     Debugln(currentConfig.ssid.c_str());
+    Debugf("  Inactivity Timeout: %lu ms, Touch Threshold: %d\n",
+           currentConfig.inactivityTimeoutMs, currentConfig.touchThreshold);
     return true;
   }
   Debugln("Config file not found.");
@@ -106,6 +119,8 @@ bool saveConfiguration()
   JsonDocument doc;
   doc["ssid"] = currentConfig.ssid;
   doc["password"] = currentConfig.password;
+  doc["inactivityTimeoutMs"] = currentConfig.inactivityTimeoutMs;
+  doc["touchThreshold"] = currentConfig.touchThreshold;
 
   File configFile = LittleFS.open(CONFIG_FILE, "w");
   if (!configFile)
@@ -426,6 +441,86 @@ void setupWebServer()
   // Captive portal handler
   server.addHandler(new CaptiveRequestHandler()).setFilter(ON_AP_FILTER); // Only active in AP mode
 
+  // API endpoint for current touch read value
+  server.on("/api/touch_read", HTTP_GET, [](AsyncWebServerRequest *request) {
+    hibernationManager.resetActivityTimer();
+    int touchValue = touchRead(TOUCH_PIN);
+    JsonDocument doc;
+    doc["value"] = touchValue;
+    doc["threshold"] = currentConfig.touchThreshold; // Also send current threshold for context
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
+
+  // API endpoint to set touch threshold
+  server.on("/api/set_touch_threshold", HTTP_POST, [](AsyncWebServerRequest *request) {
+    hibernationManager.resetActivityTimer();
+    if (request->hasParam("threshold", true)) {
+      int newThreshold = request->getParam("threshold", true)->value().toInt();
+      // Basic validation: threshold should be positive and within a reasonable range for touchRead
+      if (newThreshold > 0 && newThreshold < 100000) {
+        currentConfig.touchThreshold = newThreshold;
+        if (saveConfiguration()) {
+          // Apply immediately for active mode polling and deep sleep wakeup
+          touchSleepWakeUpEnable(TOUCH_PIN, currentConfig.touchThreshold);
+          request->send(200, "text/plain", "Touch threshold updated and saved.");
+        } else {
+          request->send(500, "text/plain", "Failed to save configuration.");
+        }
+      } else {
+        request->send(400, "text/plain", "Invalid threshold value. Must be between 1 and 99999.");
+      }
+    } else {
+      request->send(400, "text/plain", "Missing 'threshold' parameter.");
+    }
+  });
+
+  // API endpoint to set sleep delay
+  server.on("/api/set_sleep_delay", HTTP_POST, [](AsyncWebServerRequest *request) {
+    hibernationManager.resetActivityTimer();
+    if (request->hasParam("delay_minutes", true)) {
+      unsigned long delayMinutes = request->getParam("delay_minutes", true)->value().toInt();
+      if (delayMinutes >= 1) { // Minimum 1 minute delay
+        currentConfig.inactivityTimeoutMs = delayMinutes * 60 * 1000;
+        if (saveConfiguration()) {
+          hibernationManager.setInactivityTimeout(currentConfig.inactivityTimeoutMs); // Apply immediately
+          request->send(200, "text/plain", "Sleep delay updated and saved.");
+        } else {
+          request->send(500, "text/plain", "Failed to save configuration.");
+        }
+      } else {
+        request->send(400, "text/plain", "Invalid sleep delay (must be at least 1 minute).");
+      }
+    } else {
+      request->send(400, "text/plain", "Missing 'delay_minutes' parameter.");
+    }
+  });
+
+  // API endpoint for immediate sleep
+  server.on("/api/sleep_now", HTTP_POST, [](AsyncWebServerRequest *request) {
+    hibernationManager.resetActivityTimer(); // User interaction before sleep
+    request->send(200, "text/plain", "Initiating deep sleep...");
+    delay(100); // Give time for response to be sent
+    if(ledManager) ledManager->setMode(LedMode::LED_MODE_OFF); // Turn off LED before sleep
+    hibernationManager.goToDeepSleep(); // This will not return
+  });
+
+  // API endpoint to get current status/config
+  server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    hibernationManager.resetActivityTimer();
+    JsonDocument doc;
+    doc["ssid"] = WiFi.status() == WL_CONNECTED ? WiFi.SSID() : "N/A";
+    doc["ip"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "N/A";
+    doc["mode"] = WiFi.getMode() == WIFI_AP ? "AP" : "STA";
+    doc["touchThreshold"] = currentConfig.touchThreshold;
+    doc["inactivityTimeoutMinutes"] = currentConfig.inactivityTimeoutMs / (60 * 1000);
+    doc["hibernationPaused"] = hibernationManager.isPaused();
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
+
   // Modified onNotFound to also reset timer if it serves something or is an unknown API call
   server.onNotFound([](AsyncWebServerRequest *request)
                     {
@@ -509,7 +604,7 @@ void setup()
   setupDisplay();
 
   Debugln("Hibernation: Configuring touch wakeup.");
-  touchSleepWakeUpEnable(TOUCH_PIN, 4000); // Lower = more sensitive, adjust as needed
+  // touchSleepWakeUpEnable will be called after config load
   hibernationManager.pause();              // Pause hibernation manager until WiFi setup is complete
 
   Debugln("Creating LedManager.");
@@ -532,6 +627,8 @@ void setup()
   Debugln("Loading configuration and connecting to WiFi.");
   if (loadConfiguration())
   { // True if config.json is found and loaded
+    hibernationManager.setInactivityTimeout(currentConfig.inactivityTimeoutMs);
+    touchSleepWakeUpEnable(TOUCH_PIN, currentConfig.touchThreshold);
     if (connectToWiFi())
     {
       Debugln("WiFi connected with saved credentials.");
@@ -546,12 +643,16 @@ void setup()
     else
     {
       Debugln("Failed to connect with saved WiFi credentials. Starting AP mode. Hiberation timer paused.");
+      hibernationManager.setInactivityTimeout(currentConfig.inactivityTimeoutMs); // Apply default
+      touchSleepWakeUpEnable(TOUCH_PIN, currentConfig.touchThreshold); // Apply default
       startAPMode();
     }
   }
   else
   { // Config file not found
     Debugln("Configuration not found. Starting AP mode. Hiberation timer paused.");
+    hibernationManager.setInactivityTimeout(currentConfig.inactivityTimeoutMs); // Apply default
+    touchSleepWakeUpEnable(TOUCH_PIN, currentConfig.touchThreshold); // Apply default
     startAPMode();
   }
 
@@ -559,7 +660,7 @@ void setup()
   hibernationManager.resetActivityTimer(); // Reset after web server is fully set up
 
   // Initialize last touch state for active mode polling
-  lastTouchState = (touchRead(TOUCH_PIN) > TOUCH_THRESHOLD);
+  lastTouchState = (touchRead(TOUCH_PIN) < currentConfig.touchThreshold); // Corrected logic: lower value means touch
 
   Debugln("Setup complete.");
 }
@@ -587,7 +688,7 @@ void loop()
   {
     int currentTouchValue = touchRead(TOUCH_PIN);
     // Debugf("Touch read value: %d\r\n", currentTouchValue);
-    bool isCurrentlyTouched = (currentTouchValue > TOUCH_THRESHOLD);
+    bool isCurrentlyTouched = (currentTouchValue > currentConfig.touchThreshold);
 
     if (isCurrentlyTouched && !lastTouchState) // Rising edge of touch
     {

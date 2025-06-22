@@ -9,6 +9,7 @@ const ctx = UI.getCanvasContext(dom);
 let originalImage = null;
 let currentRotationAngle = 0;
 let lastDitheredImageData = null; // Stores ImageData object
+let touchPollInterval = null;
 
 const DEFAULT_BRIGHTNESS = 0;
 const DEFAULT_CONTRAST = 100; // Represents 1.00
@@ -277,6 +278,37 @@ const eventHandlers = {
       // dom.wifiConfigForm.reset();
     }
   },
+  onSaveTouchThreshold: async () => {
+    const threshold = dom.touchThresholdInput.value;
+    if (!threshold || isNaN(threshold)) {
+      UI.updateStatus(dom.touchConfigStatus, 'Invalid threshold value.', true);
+      return;
+    }
+    UI.updateStatus(dom.touchConfigStatus, 'Saving...', false);
+    const result = await Config.setTouchThreshold(parseInt(threshold));
+    UI.updateStatus(dom.touchConfigStatus, result.message, !result.success);
+  },
+  onSaveSleepDelay: async () => {
+    const delay = dom.sleepDelayInput.value;
+    if (!delay || isNaN(delay) || delay < 1) {
+      UI.updateStatus(dom.sleepConfigStatus, 'Invalid delay. Must be >= 1 minute.', true);
+      return;
+    }
+    UI.updateStatus(dom.sleepConfigStatus, 'Saving...', false);
+    const result = await Config.setSleepDelay(parseInt(delay));
+    UI.updateStatus(dom.sleepConfigStatus, result.message, !result.success);
+  },
+  onSleepNow: async () => {
+    if (confirm('Are you sure you want to put the device to sleep? You will need to touch it to wake it up again.')) {
+      UI.updateStatus(dom.statusInfo, 'Commanding device to sleep...', false);
+      const result = await Config.sleepNow();
+      if (result.success) {
+        UI.updateStatus(dom.statusInfo, 'Device is going to sleep. The web interface will become unresponsive.', false);
+      } else {
+        UI.updateStatus(dom.statusInfo, `Error: ${result.message}`, true);
+      }
+    }
+  },
   onFirmwareUpload: async (event) => {
     event.preventDefault();
     const updateFile = dom.otaFileInput.files[0];
@@ -325,6 +357,39 @@ const eventHandlers = {
   }
 };
 
+async function loadDeviceStatus() {
+  const status = await Config.getStatus();
+  if (status) {
+    if (dom.touchThresholdInput) dom.touchThresholdInput.value = status.touchThreshold;
+    if (dom.sleepDelayInput) dom.sleepDelayInput.value = status.inactivityTimeoutMinutes;
+  }
+}
+
+function startTouchPolling() {
+  if (touchPollInterval) clearInterval(touchPollInterval); // Clear any existing interval
+  touchPollInterval = setInterval(async () => {
+    const data = await Config.getTouchValue();
+    if (data && dom.touchValueSpan) {
+      dom.touchValueSpan.textContent = `${data.value} (Threshold: ${data.threshold})`;
+      // Update a progress bar for visualization
+      if (dom.touchValueBar) {
+        // Assuming a max value of ~65535 for touchRead for the progress bar
+        const maxTouchVal = 65535;
+        // We want the bar to fill as the value gets *lower* (closer to a touch)
+        const progress = 100 - (data.value / maxTouchVal * 100);
+        dom.touchValueBar.value = progress;
+      }
+    }
+  }, 1000); // Poll every second
+}
+
+function stopTouchPolling() {
+  if (touchPollInterval) {
+    clearInterval(touchPollInterval);
+    touchPollInterval = null;
+  }
+}
+
 function init() {
   UI.initTabs(dom);
   UI.initEventListeners(dom, eventHandlers);
@@ -333,6 +398,18 @@ function init() {
   UI.applyCanvasFitClass(dom, UI.getSelectedValues(dom).fitToScreen);
   if (dom.advancedControlsContainer) dom.advancedControlsContainer.style.display = 'none'; // Default hidden
   UI.updateStatus(dom.statusInfo, "Ready. Select an image or .bin file.");
+  loadDeviceStatus();
+
+  // Listen for the custom event from ui.js to start/stop polling
+  document.addEventListener('tabShown', (e) => {
+    if (e.detail.tabId === 'config') {
+      loadDeviceStatus(); // Refresh status when tab is shown
+      startTouchPolling();
+    } else {
+      stopTouchPolling();
+    }
+  });
+
 }
 
 document.addEventListener('DOMContentLoaded', init);
