@@ -149,6 +149,29 @@
         </div>
       </div>
 
+      <div class="config-section">
+        <h4>Two-Way Sync</h4>
+        <p>Sync images between two SpectraFrames. If you change the picture on one, it will be uploaded to the URL and pulled by the other.</p>
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="syncEnabledCheckbox"> Enable Sync
+          </label>
+        </div>
+        <div class="form-group">
+          <label for="syncUrlInput">Sync URL:</label>
+          <input type="url" id="syncUrlInput" placeholder="https://script.google.com/macros/s/.../exec">
+        </div>
+        <div class="form-group">
+          <label for="syncApiKeyInput">API Key (Optional):</label>
+          <input type="password" id="syncApiKeyInput">
+        </div>
+        <div class="form-group">
+          <label for="syncIntervalInput">Check Interval (hours):</label>
+          <input type="number" id="syncIntervalInput" min="1" max="168" value="4">
+        </div>
+        <button id="saveSyncConfigButton">Save Sync Settings</button>
+      </div>
+
     </div>
 
     <div id="ota" class="tab-content" role="tabpanel" aria-labelledby="otaTabButton">

@@ -357,6 +357,17 @@ const eventHandlers = {
       }
     }
   },
+  onSaveSyncConfig: async () => {
+    const config = {
+      enabled: dom.syncEnabledCheckbox.checked,
+      url: dom.syncUrlInput.value,
+      apiKey: dom.syncApiKeyInput.value,
+      interval: dom.syncIntervalInput.value
+    };
+    UI.updateStatus('Saving sync configuration...');
+    const result = await Config.saveSyncConfig(config);
+    UI.updateStatus(result.message, !result.success);
+  },
   onFirmwareUpload: async (event) => {
     event.preventDefault();
     const updateFile = dom.otaFileInput.files[0];
@@ -415,6 +426,11 @@ async function loadDeviceStatus() {
       });
       applyCanvasOrientation(status.orientation);
     }
+    // Sync settings
+    if (dom.syncEnabledCheckbox) dom.syncEnabledCheckbox.checked = status.syncEnabled;
+    if (dom.syncUrlInput) dom.syncUrlInput.value = status.syncUrl;
+    if (dom.syncApiKeyInput) dom.syncApiKeyInput.value = status.syncApiKey;
+    if (dom.syncIntervalInput) dom.syncIntervalInput.value = status.syncIntervalHours;
   }
 }
 

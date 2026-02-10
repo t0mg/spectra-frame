@@ -47,6 +47,13 @@ export function getDomElements() {
     saveSleepDelayButton: document.getElementById('saveSleepDelayButton'),
     sleepNowButton: document.getElementById('sleepNowButton'),
 
+    // Sync Settings in Config Tab
+    syncEnabledCheckbox: document.getElementById('syncEnabledCheckbox'),
+    syncUrlInput: document.getElementById('syncUrlInput'),
+    syncApiKeyInput: document.getElementById('syncApiKeyInput'),
+    syncIntervalInput: document.getElementById('syncIntervalInput'),
+    saveSyncConfigButton: document.getElementById('saveSyncConfigButton'),
+
     // OTA Tab Elements
     otaConfigForm: document.getElementById('firmwareUploadForm'),
     otaFileInput: document.getElementById('updateFile'),
@@ -133,6 +140,11 @@ export function initEventListeners(dom, handlers) {
   dom.saveTouchThresholdButton.addEventListener('click', handlers.onSaveTouchThreshold);
   dom.saveSleepDelayButton.addEventListener('click', handlers.onSaveSleepDelay);
   dom.sleepNowButton.addEventListener('click', handlers.onSleepNow);
+
+  // Sync Settings
+  if (dom.saveSyncConfigButton) {
+    dom.saveSyncConfigButton.addEventListener('click', handlers.onSaveSyncConfig);
+  }
 
   // OTA Tab
   dom.otaConfigForm.addEventListener('submit', handlers.onFirmwareUpload);
