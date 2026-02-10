@@ -44,8 +44,13 @@ bool HibernationManager::shouldGoToSleep() {
     return false;
 }
 
-void HibernationManager::goToDeepSleep() {
+void HibernationManager::goToDeepSleep(uint64_t wakeup_time_us) {
     Debugln("Hibernation: Preparing for deep sleep...");
+
+    if (wakeup_time_us > 0) {
+        Debugf("Hibernation: Enabling timer wakeup in %llu us\n", wakeup_time_us);
+        esp_sleep_enable_timer_wakeup(wakeup_time_us);
+    }
 
     // Wait for E-Paper to be idle before sleeping
     Debug("Hibernation: Checking E-Paper busy status... ");

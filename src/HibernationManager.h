@@ -10,7 +10,7 @@ public:
     void pause();
     void resumeAndReset();
     bool shouldGoToSleep();
-    void goToDeepSleep();
+    void goToDeepSleep(uint64_t wakeup_time_us = 0);
     void setInactivityTimeout(unsigned long timeoutMs);
     bool isPaused() const;
 

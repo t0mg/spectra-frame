@@ -12,6 +12,7 @@
 #include "DisplayManager.h"
 #include "OtaManager.h"
 #include "LedManager.h"
+#include "SyncManager.h"
 
 // --- Configuration Constants ---
 const char *AP_SSID = "SpectraFrameSetup";                                  // Provided in the AP QR code
@@ -32,6 +33,7 @@ const char* DEFAULT_ORIENTATION = "portrait";
 AsyncWebServer server(80);
 DNSServer dnsServer;
 OtaManager *otaManager = nullptr;
+SyncManager *syncManager = nullptr;
 LedManager *ledManager = nullptr;
 const byte DNS_PORT = 53;
 
@@ -43,9 +45,16 @@ struct Config
   unsigned long inactivityTimeoutMs;
   int touchThreshold;
   String orientation;
-  // Add other settings here, e.g., default display mode, update interval
+  // Sync settings
+  bool syncEnabled;
+  String syncUrl;
+  String syncApiKey;
+  int syncIntervalHours;
 };
 Config currentConfig;
+
+// --- Persisted Sync State ---
+RTC_DATA_ATTR char rtcSyncETag[64] = {0};
 
 // --- E-Paper State ---
 DisplayManager *displayMgr = nullptr; // Global pointer for DisplayManager
@@ -108,6 +117,11 @@ bool loadConfiguration()
   currentConfig.inactivityTimeoutMs = DEFAULT_INACTIVITY_TIMEOUT_MS;
   currentConfig.touchThreshold = DEFAULT_TOUCH_THRESHOLD;
   currentConfig.orientation = DEFAULT_ORIENTATION;
+  currentConfig.syncEnabled = false;
+  currentConfig.syncUrl = "";
+  currentConfig.syncApiKey = "";
+  currentConfig.syncIntervalHours = 4; // Default to every 4 hours
+
   if (LittleFS.exists(CONFIG_FILE))
   {
     File configFile = LittleFS.open(CONFIG_FILE, "r");
@@ -133,6 +147,11 @@ bool loadConfiguration()
     currentConfig.inactivityTimeoutMs = doc["inactivityTimeoutMs"] | DEFAULT_INACTIVITY_TIMEOUT_MS;
     currentConfig.touchThreshold = doc["touchThreshold"] | DEFAULT_TOUCH_THRESHOLD;
     currentConfig.orientation = doc["orientation"] | DEFAULT_ORIENTATION;
+    currentConfig.syncEnabled = doc["syncEnabled"] | false;
+    currentConfig.syncUrl = doc["syncUrl"].as<String>();
+    currentConfig.syncApiKey = doc["syncApiKey"].as<String>();
+    currentConfig.syncIntervalHours = doc["syncIntervalHours"] | 4;
+
     Debug("Config loaded: SSID=");
     Debugln(currentConfig.ssid.c_str());
     Debugf("  Inactivity Timeout: %lu ms, Touch Threshold: %d, Orientation: %s\n", currentConfig.inactivityTimeoutMs, currentConfig.touchThreshold, currentConfig.orientation.c_str());
@@ -150,6 +169,10 @@ bool saveConfiguration()
   doc["inactivityTimeoutMs"] = currentConfig.inactivityTimeoutMs;
   doc["touchThreshold"] = currentConfig.touchThreshold;
   doc["orientation"] = currentConfig.orientation;
+  doc["syncEnabled"] = currentConfig.syncEnabled;
+  doc["syncUrl"] = currentConfig.syncUrl;
+  doc["syncApiKey"] = currentConfig.syncApiKey;
+  doc["syncIntervalHours"] = currentConfig.syncIntervalHours;
 
   File configFile = LittleFS.open(CONFIG_FILE, "w");
   if (!configFile)
@@ -547,13 +570,29 @@ void setupWebServer()
     }
   });
 
+  // API endpoint for sync configuration
+  server.on("/api/sync_config", HTTP_POST, [](AsyncWebServerRequest *request) {
+    hibernationManager.resetActivityTimer();
+    if (request->hasParam("syncEnabled", true)) currentConfig.syncEnabled = request->getParam("syncEnabled", true)->value() == "true";
+    if (request->hasParam("syncUrl", true)) currentConfig.syncUrl = request->getParam("syncUrl", true)->value();
+    if (request->hasParam("syncApiKey", true)) currentConfig.syncApiKey = request->getParam("syncApiKey", true)->value();
+    if (request->hasParam("syncIntervalHours", true)) currentConfig.syncIntervalHours = request->getParam("syncIntervalHours", true)->value().toInt();
+
+    if (saveConfiguration()) {
+        request->send(200, "text/plain", "Sync configuration saved.");
+    } else {
+        request->send(500, "text/plain", "Failed to save configuration.");
+    }
+  });
+
   // API endpoint for immediate sleep
   server.on("/api/sleep_now", HTTP_POST, [](AsyncWebServerRequest *request) {
     hibernationManager.resetActivityTimer(); // User interaction before sleep
     request->send(200, "text/plain", "Initiating deep sleep...");
     delay(100); // Give time for response to be sent
     if(ledManager) ledManager->setMode(LedMode::LED_MODE_OFF); // Turn off LED before sleep
-    hibernationManager.goToDeepSleep(); // This will not return
+    uint64_t sleepTimeUs = currentConfig.syncEnabled ? (uint64_t)currentConfig.syncIntervalHours * 3600ULL * 1000000ULL : 0;
+    hibernationManager.goToDeepSleep(sleepTimeUs); // This will not return
   });
 
   // API endpoint to get current status/config
@@ -567,6 +606,10 @@ void setupWebServer()
     doc["inactivityTimeoutMinutes"] = currentConfig.inactivityTimeoutMs / (60 * 1000);
     doc["orientation"] = currentConfig.orientation;
     doc["hibernationPaused"] = hibernationManager.isPaused();
+    doc["syncEnabled"] = currentConfig.syncEnabled;
+    doc["syncUrl"] = currentConfig.syncUrl;
+    doc["syncApiKey"] = currentConfig.syncApiKey;
+    doc["syncIntervalHours"] = currentConfig.syncIntervalHours;
     String response;
 
     // Add battery voltage
@@ -681,8 +724,9 @@ void setup()
   hibernationManager.pause(); // Pause hibernation manager until WiFi setup is complete
   ledManager->setMode(LedMode::LED_MODE_BUSY);
 
-  Debugln("Creating OtaManager.");
+  Debugln("Creating OtaManager and SyncManager.");
   otaManager = new OtaManager(hibernationManager, *ledManager);
+  syncManager = new SyncManager(hibernationManager, *ledManager);
 
   // Configure ADC for battery monitoring
   analogSetPinAttenuation(BATT_ADC_PIN, ADC_11db);
@@ -696,7 +740,28 @@ void setup()
       Debugln("WiFi connected with saved credentials.");
       hibernationManager.resumeAndReset();
       if(ledManager) ledManager->setMode(LedMode::LED_MODE_IDLE);
+
       esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+
+      // Handle timer wakeup for sync
+      if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER) {
+          Debugln("Wakeup by timer: Checking sync...");
+          if (currentConfig.syncEnabled) {
+              String etag = String(rtcSyncETag);
+              if (syncManager->pullImage(currentConfig.syncUrl, currentConfig.syncApiKey, etag)) {
+                  Debugln("Sync: New image downloaded.");
+                  strncpy(rtcSyncETag, etag.c_str(), sizeof(rtcSyncETag) - 1);
+                  displayMgr->displayImageFile(UPLOADED_IMAGE_PATH);
+              } else {
+                  Debugln("Sync: No update needed or failed.");
+              }
+          }
+          // Go back to sleep immediately after sync check
+          Debugln("Timer wakeup sync complete. Returning to deep sleep.");
+          uint64_t sleepTimeUs = (uint64_t)currentConfig.syncIntervalHours * 3600ULL * 1000000ULL;
+          hibernationManager.goToDeepSleep(sleepTimeUs);
+      }
+
       if (!LittleFS.exists(UPLOADED_IMAGE_PATH))
       {
         showWebUIQRcode(); // Show QR code for Web UI
@@ -737,6 +802,13 @@ void loop()
     newImageReadyForDisplay = false;
     Debugln("New image detected in loop. Displaying...");
     displayMgr->displayImageFile(UPLOADED_IMAGE_PATH); // LED handled internally
+
+    // Sync push if enabled
+    if (currentConfig.syncEnabled && syncManager) {
+        Debugln("Sync: Pushing new image to remote...");
+        syncManager->pushImage(currentConfig.syncUrl, currentConfig.syncApiKey, UPLOADED_IMAGE_PATH);
+    }
+
     Debugln("Image display from loop complete.");
     Debugf("[DEBUG] inactivityTimeoutMs after upload: %lu ms\n", currentConfig.inactivityTimeoutMs);
     hibernationManager.resetActivityTimer();
@@ -778,7 +850,8 @@ void loop()
         displayMgr->displayImageFile(UPLOADED_IMAGE_PATH);
       }
       if(ledManager) ledManager->setMode(LedMode::LED_MODE_OFF);
-      hibernationManager.goToDeepSleep();
+      uint64_t sleepTimeUs = currentConfig.syncEnabled ? (uint64_t)currentConfig.syncIntervalHours * 3600ULL * 1000000ULL : 0;
+      hibernationManager.goToDeepSleep(sleepTimeUs);
     }
   }
   if(ledManager) ledManager->update();

@@ -23,6 +23,27 @@ export async function saveWifiConfig(ssid, password) {
 }
 
 /**
+ * Saves Two-Way Sync configuration to the device.
+ * @param {object} config - The sync configuration object.
+ * @returns {Promise<object>} A promise that resolves to an object { success: boolean, message: string }.
+ */
+export async function saveSyncConfig(config) {
+  const formData = new FormData();
+  formData.append('syncEnabled', config.enabled);
+  formData.append('syncUrl', config.url);
+  formData.append('syncApiKey', config.apiKey);
+  formData.append('syncIntervalHours', config.interval);
+
+  try {
+    const response = await fetch('/api/sync_config', { method: 'POST', body: formData });
+    const text = await response.text();
+    return { success: response.ok, message: text };
+  } catch (error) {
+    return { success: false, message: `Network error: ${error.message}` };
+  }
+}
+
+/**
  * Fetches the current device status (IP, thresholds, etc.).
  * @returns {Promise<object|null>} A promise that resolves to the status object or null on error.
  */
