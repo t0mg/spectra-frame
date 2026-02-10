@@ -103,3 +103,20 @@ export async function sleepNow() {
     return { success: false, message: `Network error: ${error.message}` };
   }
 }
+
+/**
+ * Sets the display orientation on the device.
+ * @param {string} orientation - The new orientation ('portrait' or 'landscape').
+ * @returns {Promise<object>} A promise that resolves to an object { success: boolean, message: string }.
+ */
+export async function setOrientation(orientation) {
+  const formData = new FormData();
+  formData.append('orientation', orientation);
+  try {
+    const response = await fetch('/api/set_orientation', { method: 'POST', body: formData });
+    const text = await response.text();
+    return { success: response.ok, message: text };
+  } catch (error) {
+    return { success: false, message: `Network error: ${error.message}` };
+  }
+}

@@ -16,7 +16,7 @@
       <button id="ditheringTabButton" class="tab-button" data-tab="upload" role="tab" aria-selected="false"
         aria-controls="upload">Display</button>
       <button id="configTabButton" class="tab-button" data-tab="config" role="tab" aria-selected="false"
-        aria-controls="config">Options</button>
+        aria-controls="config">Settings</button>
       <button id="otaTabButton" class="tab-button" data-tab="ota" role="tab" aria-selected="false"
         aria-controls="ota">Update</button>
       <button id="sleepNowButton" class="button-danger">Zzz</button>
@@ -30,10 +30,11 @@
 
       <div class="controls-row">
         <select id="ditherAlgorithmSelect">
-          <option value="floyd-steinberg" selected>Floyd-Steinberg</option>
-          <option value="atkinson">Atkinson</option>
-          <option value="blue-noise">Blue Noise</option>
-          <option value="none">None (Quantize Only)</option>
+            <option value="floyd-steinberg">Floyd-Steinberg</option>
+            <option value="atkinson">Atkinson</option>
+            <option value="ordered">Ordered (Bayer)</option>
+            <option value="blue-noise">Blue Noise</option>
+            <option value="none">None (Quantization)</option>
         </select>
         <select id="colorPaletteSelect">
           <option value="SPECTRA6">Spectra 6-Color</option>
@@ -90,20 +91,7 @@
         </div>
       </div>
 
-      <section class="status">
-        <p id="statusInfo"></p>
-        <progress id="uploadProgressBar" value="0" max="100"></progress>
-      </section>
-
       <canvas id="canvas" width="0" height="0"></canvas>
-
-      <footer>
-        <p>
-          Dithering tool adapted from the utility found at
-          <a href="https://www.e-paper-display.com/dithering.html" target="_blank"
-            rel="noopener noreferrer">www.e-paper-display.com</a> by Zhang Hui.
-        </p>
-      </footer>
     </div>
 
     <div id="config" class="tab-content" role="tabpanel" aria-labelledby="configTabButton">
@@ -120,12 +108,21 @@
         <input type='submit' value='Save & Restart'>
       </form>
 
-      <section class="status">
-        <p id="wifiConfigStatus"></p>
-      </section>
-
       <hr>
       <h3>Device Settings</h3>
+
+      <div class="config-section">
+        <h4>Orientation</h4>
+        <div class="form-group">
+            <label>
+                <input type="radio" name="orientation" value="portrait" checked> Portrait
+            </label>
+            <label>
+                <input type="radio" name="orientation" value="landscape"> Landscape
+            </label>
+        </div>
+        <p>Note: Rotates on-screen messages and QR codes. Requires a device restart to take effect.</p>
+      </div>
 
       <div class="config-section">
         <h4>Touch Sensor Calibration</h4>
@@ -141,7 +138,6 @@
           <input type="number" id="touchThresholdInput" min="1" max="99999">
           <button id="saveTouchThresholdButton">Save Threshold</button>
         </div>
-        <span id="touchConfigStatus" class="status-message"></span>
       </div>
 
       <div class="config-section">
@@ -151,7 +147,6 @@
           <input type="number" id="sleepDelayInput" min="1">
           <button id="saveSleepDelayButton">Save Delay</button>
         </div>
-        <span id="sleepConfigStatus" class="status-message"></span>
       </div>
 
     </div>
@@ -176,14 +171,15 @@
         <button type="submit">Upload & Flash</button>
       </form>
 
-      <section class="status">
-        <p id="otaStatus"></p>
-        <progress id="otaProgressBar" value="0" max="100"></progress>
-      </section>
-
     </div>
 
   </div>
+
+  <div class="status">
+    <p id="statusInfo"></p>
+    <progress id="progressBar" value="0" max="100"></progress>
+  </div>
+
 
   <script type="module" src="js/main.js"></script>
 </body>

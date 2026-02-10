@@ -1,13 +1,15 @@
 import * as UI from './ui.js';
 import * as ImageProcessor from './image-processor.js';
+import { WebGLImageProcessor } from './webgl-processor.js';
 import * as Config from './config.js';
 import { debounce } from './utils.js';
 
-const dom = UI.getDomElements();
-const ctx = UI.getCanvasContext(dom);
+let dom = null; // Will be initialized in init()
+let ctx = null; // Will be initialized in init()
 
 let originalImage = null;
 let currentRotationAngle = 0;
+let webglProcessor = null;
 let lastDitheredImageData = null; // Stores ImageData object
 let touchPollInterval = null;
 
@@ -27,11 +29,16 @@ async function applyDitheringAndStore() {
   if (!originalImage) {
     return;
   }
-  await UI.updateStatus(dom.statusInfo, 'Processing image...');
+  await UI.updateStatus('Processing image...');
   UI.updateControlStates(dom, { isProcessing: true, currentIsBinMode: false });
 
   try {
+    if (!webglProcessor) {
+      webglProcessor = new WebGLImageProcessor();
+    }
+
     const settings = UI.getSelectedValues(dom);
+    /*
     const orientedImage = ImageProcessor.getOrientedSourceCanvas(originalImage, currentRotationAngle);
     const sourceToScale = ImageProcessor.getProcessedSourceCanvas(orientedImage, settings.brightness, settings.contrast, settings.gamma);
 
@@ -62,12 +69,34 @@ async function applyDitheringAndStore() {
       case 'none': ImageProcessor.applyQuantizationOnly(imageData, colors); break;
       default: ImageProcessor.applyQuantizationOnly(imageData, colors);
     }
+      */
+
+    const orientedSource = ImageProcessor.getOrientedSourceCanvas(originalImage, currentRotationAngle);
+
+    // The WebGL processor handles adjustments. It will also handle dithering for GPU-based algorithms.
+    webglProcessor.process(orientedSource, settings);
+
+    let imageData = webglProcessor.getImageData();
+
+    // Handle CPU dithering if needed.
+    const colors = ImageProcessor.getColors(settings.colorPalette);
+    if (settings.ditherAlgorithm === 'floyd-steinberg') {
+      ImageProcessor.applyFloydSteinbergDithering(imageData, colors);
+    } else if (settings.ditherAlgorithm === 'atkinson') {
+      ImageProcessor.applyAtkinsonDithering(imageData, colors);
+    }
+
+    UI.setCanvasDimensions(dom, imageData.width, imageData.height);
+
     ctx.putImageData(imageData, 0, 0);
     lastDitheredImageData = imageData;
-    UI.updateStatus(dom.statusInfo, 'Image processed.');
+    UI.updateStatus('Image processed.');
   } catch (error) {
     console.error("Error applying dithering:", error);
-    UI.updateStatus(dom.statusInfo, `Error processing image: ${error.message}`);
+    // UI.updateStatus(`Error processing image: ${error.message}`);
+    const message = error.message.includes("WebGL") ? "A WebGL error occurred. Your browser might not support it or it could be disabled." : `Error processing image: ${error.message}`;
+    UI.updateStatus(message, true);
+
   } finally {
     UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
   }
@@ -75,9 +104,17 @@ async function applyDitheringAndStore() {
 
 const debouncedApplyDithering = debounce(applyDitheringAndStore, 250);
 
+function applyCanvasOrientation(orientation) {
+    if (orientation === 'landscape') {
+        dom.canvas.classList.add('canvas-landscape');
+    } else {
+        dom.canvas.classList.remove('canvas-landscape');
+    }
+}
+
 const eventHandlers = {
   onFileUpload: (event) => {
-    UI.updateStatus(dom.statusInfo, '');
+    UI.updateStatus('');
     const file = event.target.files[0];
     if (!file) return;
 
@@ -85,10 +122,10 @@ const eventHandlers = {
     UI.updateControlStates(dom, { isProcessing: true, currentIsBinMode: (originalImage === null) });
 
     reader.onload = async (e) => {
-      await new Promise(resolve => requestAnimationFrame(resolve)); // UI update
+      await new Promise(resolve => requestAnimationFrame(resolve)); // Allow UI to update
       try {
         if (file.name.toLowerCase().endsWith('.bin')) {
-          UI.updateStatus(dom.statusInfo, 'Reading .bin file...');
+          UI.updateStatus('Reading .bin file...');
           const arrayBuffer = e.target.result;
           const imageData = ImageProcessor.renderBinDataToImageData(arrayBuffer);
           UI.setCanvasDimensions(dom, imageData.width, imageData.height);
@@ -97,10 +134,10 @@ const eventHandlers = {
           originalImage = null; // Signifies raw data loaded
           currentRotationAngle = 0;
           resetAdjustmentSlidersToDefault();
-          UI.updateStatus(dom.statusInfo, '.bin file loaded. Dithering and image adjustments cannot be changed.');
+          UI.updateStatus('.bin file loaded. Dithering and image adjustments cannot be changed.');
           UI.applyCanvasFitClass(dom, UI.getSelectedValues(dom).fitToScreen);
         } else if (file.type.startsWith('image/')) {
-          UI.updateStatus(dom.statusInfo, 'Loading image...');
+          UI.updateStatus('Loading image...');
           const img = new Image();
           img.onload = async () => {
             await new Promise(resolve => requestAnimationFrame(resolve));
@@ -110,18 +147,18 @@ const eventHandlers = {
             applyDitheringAndStore(); // This will set status and update controls
           };
           img.onerror = () => {
-            UI.updateStatus(dom.statusInfo, "Error loading image file. It might be corrupted or unsupported.");
+            UI.updateStatus("Error loading image file. It might be corrupted or unsupported.", true);
             UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
           };
           img.src = e.target.result;
         } else {
-          UI.updateStatus(dom.statusInfo, "Unsupported file type. Please upload an image or .bin file.");
+          UI.updateStatus("Unsupported file type. Please upload an image or .bin file.", true);
           dom.uploadInput.value = ''; // Reset file input
           UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
         }
       } catch (error) {
         console.error("Error processing file:", error);
-        UI.updateStatus(dom.statusInfo, `Error: ${error.message}`);
+        UI.updateStatus(`Error: ${error.message}`, true);
         UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
       } finally {
         // Final state update, applyDitheringAndStore handles its own for image case
@@ -131,7 +168,7 @@ const eventHandlers = {
       }
     };
     reader.onerror = () => {
-      UI.updateStatus(dom.statusInfo, "Error: Could not read file.");
+      UI.updateStatus("Error: Could not read file.", true);
       UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
     };
 
@@ -143,7 +180,8 @@ const eventHandlers = {
   },
   onDitheringSettingChanged: () => {
     if (originalImage && !dom.ditherAlgorithmSelect.disabled) { // Check if control is active
-      applyDitheringAndStore();
+      // applyDitheringAndStore();
+      debouncedApplyDithering();
     }
   },
   onRotateSource: () => {
@@ -168,10 +206,13 @@ const eventHandlers = {
     if (type === 'contrast') dom.contrastSlider.value = DEFAULT_CONTRAST;
     if (type === 'gamma') dom.gammaSlider.value = DEFAULT_GAMMA;
     applyDitheringAndStore(); // Apply immediately
+    UI.updateAdjustmentValueDisplays(dom, {
+      brightness: dom.brightnessSlider.value, contrast: dom.contrastSlider.value, gamma: dom.gammaSlider.value
+    });
   },
   onDownloadPNG: () => {
     if (!lastDitheredImageData && !originalImage) {
-      UI.updateStatus(dom.statusInfo, "Please load or process an image first.");
+      UI.updateStatus("Please load or process an image first.", true);
       return;
     }
     if (!lastDitheredImageData && originalImage) { // Process first if not done
@@ -189,7 +230,7 @@ const eventHandlers = {
       const blob = new Blob([cArrayString], { type: 'text/plain' });
       UI.triggerDownload(blob, 'ImageData.cpp');
     } else {
-      UI.updateStatus(dom.statusInfo, "Please load or process an image first.");
+      UI.updateStatus("Please load or process an image first.", true);
     }
   },
   onDownloadBIN: async () => {
@@ -199,12 +240,12 @@ const eventHandlers = {
       const blob = new Blob([byteArray], { type: 'application/octet-stream' });
       UI.triggerDownload(blob, 'dithered_image.bin');
     } else {
-      UI.updateStatus(dom.statusInfo, "Please load or process an image first.");
+      UI.updateStatus("Please load or process an image first.", true);
     }
   },
   onUploadToDevice: async () => {
     UI.updateControlStates(dom, { isProcessing: true, currentIsBinMode: (originalImage === null) });
-    UI.updateStatus(dom.statusInfo, 'Preparing image for upload...');
+    UI.updateStatus('Preparing image for upload...');
     await new Promise(resolve => requestAnimationFrame(resolve));
 
     let byteArray;
@@ -215,14 +256,14 @@ const eventHandlers = {
       if (lastDitheredImageData) {
         byteArray = ImageProcessor.generateBinData(lastDitheredImageData);
       } else {
-        UI.updateStatus(dom.statusInfo, 'No image data to upload. Please load/process an image.');
+        UI.updateStatus('No image data to upload. Please load/process an image.');
         UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
         return;
       }
 
       if (byteArray) {
-        UI.updateUploadProgress(dom, 0); // Reset progress bar
-        UI.updateStatus(dom.statusInfo, 'Starting upload...');
+        UI.updateUploadProgress(0); // Reset progress bar
+        UI.updateStatus('Starting upload...');
 
         const formData = new FormData();
         const blob = new Blob([byteArray], { type: 'application/octet-stream' });
@@ -234,78 +275,85 @@ const eventHandlers = {
         xhr.upload.onprogress = function (event) {
           if (event.lengthComputable) {
             const percentComplete = (event.loaded / event.total) * 100;
-            UI.updateUploadProgress(dom, percentComplete);
-            UI.updateStatus(dom.statusInfo, `Uploading: ${Math.round(percentComplete)}%`);
+            UI.updateUploadProgress(percentComplete);
+            UI.updateStatus(`Uploading: ${Math.round(percentComplete)}%`);
           }
         };
         xhr.onload = function () {
-          UI.updateUploadProgress(dom, 100); // Ensure it hides
+          UI.updateUploadProgress(100); // Ensure it hides
           if (xhr.status >= 200 && xhr.status < 300) {
-            UI.updateStatus(dom.statusInfo, `Upload successful! Server: ${xhr.responseText}`);
+            UI.updateStatus(`Upload successful! Server: ${xhr.responseText}`);
           } else {
-            UI.updateStatus(dom.statusInfo, `Error: Upload failed. Status ${xhr.status}: ${xhr.responseText}`);
+            UI.updateStatus(`Error: Upload failed. Status ${xhr.status}: ${xhr.responseText}`, true);
           }
           UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
         };
         xhr.onerror = function () {
-          UI.updateUploadProgress(dom, 100);
-          UI.updateStatus(dom.statusInfo, 'Error: Upload failed due to a network error.');
+          UI.updateUploadProgress(100);
+          UI.updateStatus('Error: Upload failed due to a network error.', true);
           UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
         };
         xhr.onabort = function () {
-          UI.updateUploadProgress(dom, 100);
-          UI.updateStatus(dom.statusInfo, 'Upload aborted.');
+          UI.updateUploadProgress(100);
+          UI.updateStatus('Upload aborted.', true);
           UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
         };
         xhr.send(formData);
       }
     } catch (e) {
       console.error("Error during upload preparation:", e);
-      UI.updateStatus(dom.statusInfo, `Error preparing for upload: ${e.message}`);
+      UI.updateStatus(`Error preparing for upload: ${e.message}`, true);
       UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
     }
   },
   onWifiConfigSave: async (event) => {
     event.preventDefault();
-    UI.updateStatus(dom.wifiConfigStatus, "Saving WiFi configuration...", false);
+    UI.updateStatus("Saving WiFi configuration...");
     const ssid = dom.wifiSsidInput.value;
     const password = dom.wifiPasswordInput.value;
 
     const result = await Config.saveWifiConfig(ssid, password);
-    UI.updateStatus(dom.wifiConfigStatus, result.message, !result.success);
+    UI.updateStatus(result.message, !result.success);
     if (result.success) {
       // Optionally clear form or give further instructions
       // dom.wifiConfigForm.reset();
     }
   },
+  onOrientationChange: async (event) => {
+    const orientation = event.target.value;
+    applyCanvasOrientation(orientation);
+    UI.updateStatus('Saving orientation...');
+    const result = await Config.setOrientation(orientation);
+    UI.updateStatus(result.message, !result.success);
+  },
   onSaveTouchThreshold: async () => {
     const threshold = dom.touchThresholdInput.value;
     if (!threshold || isNaN(threshold)) {
-      UI.updateStatus(dom.touchConfigStatus, 'Invalid threshold value.', true);
+      UI.updateStatus('Invalid threshold value.', true);
       return;
     }
-    UI.updateStatus(dom.touchConfigStatus, 'Saving...', false);
+    UI.updateStatus('Saving...');
     const result = await Config.setTouchThreshold(parseInt(threshold));
-    UI.updateStatus(dom.touchConfigStatus, result.message, !result.success);
+    UI.updateStatus(result.message, !result.success);
   },
   onSaveSleepDelay: async () => {
     const delay = dom.sleepDelayInput.value;
     if (!delay || isNaN(delay) || delay < 1) {
-      UI.updateStatus(dom.sleepConfigStatus, 'Invalid delay. Must be >= 1 minute.', true);
+      UI.updateStatus('Invalid delay. Must be >= 1 minute.', true);
       return;
     }
-    UI.updateStatus(dom.sleepConfigStatus, 'Saving...', false);
+    UI.updateStatus('Saving...');
     const result = await Config.setSleepDelay(parseInt(delay));
-    UI.updateStatus(dom.sleepConfigStatus, result.message, !result.success);
+    UI.updateStatus(result.message, !result.success);
   },
   onSleepNow: async () => {
     if (confirm('Are you sure you want to put the device to sleep? You will need to touch it to wake it up again.')) {
-      UI.updateStatus(dom.statusInfo, 'Commanding device to sleep...', false);
+      UI.updateStatus('Commanding device to sleep...');
       const result = await Config.sleepNow();
       if (result.success) {
-        UI.updateStatus(dom.statusInfo, 'Device is going to sleep. The web interface will become unresponsive.', false);
+        UI.updateStatus('Device is going to sleep. The web interface will become unresponsive.');
       } else {
-        UI.updateStatus(dom.statusInfo, `Error: ${result.message}`, true);
+        UI.updateStatus(`Error: ${result.message}`, true);
       }
     }
   },
@@ -314,14 +362,13 @@ const eventHandlers = {
     const updateFile = dom.otaFileInput.files[0];
     const selectedUpdateType = dom.otaUpdateType.querySelector('input:checked').value;
     if (!updateFile) {
-      UI.updateStatus(dom.otaStatus, 'No file selected for upload.', true);
+      UI.updateStatus('No file selected for upload.', true);
       return;
     }
 
     const typeText = selectedUpdateType === 'firmware' ? 'Firmware' : 'Filesystem';
-    UI.updateStatus(dom.otaStatus, `Uploading ${typeText}: 0%`);
-    dom.otaProgressBar.style.display = 'block';
-    dom.otaProgressBar.value = 0;
+    UI.updateStatus(`Uploading ${typeText}: 0%`);
+    UI.updateUploadProgress(0);
 
     const formData = new FormData();
     formData.append('updateType', selectedUpdateType);
@@ -334,23 +381,23 @@ const eventHandlers = {
     xhr.upload.onprogress = function (event) {
       if (event.lengthComputable) {
         const percentComplete = Math.round((event.loaded / event.total) * 100);
-        dom.otaProgressBar.value = percentComplete;
-        UI.updateStatus(dom.otaStatus, `Uploading ${typeText}: ${percentComplete}%`);
+        UI.updateUploadProgress(percentComplete);
+        UI.updateStatus(`Uploading ${typeText}: ${percentComplete}%`);
       }
     };
 
     xhr.onload = function () {
-      dom.otaProgressBar.style.display = 'none';
+      UI.updateUploadProgress(100); // Hide global progress bar
       if (xhr.status === 200) {
-        UI.updateStatus(dom.otaStatus, `${xhr.responseText}`);
+        UI.updateStatus(`${xhr.responseText}`);
       } else {
-        UI.updateStatus(dom.otaStatus, `${typeText} upload failed: ${xhr.status} ${xhr.responseText}`, true);
+        UI.updateStatus(`${typeText} upload failed: ${xhr.status}: ${xhr.responseText}`, true);
       }
     };
 
     xhr.onerror = function () {
       dom.otaProgressBar.style.display = 'none';
-      UI.updateStatus(dom.otaStatus, `${typeText} upload error: Network error or server unavailable.`, true);
+      UI.updateStatus(`${typeText} upload error: Network error or server unavailable.`, true);
     };
 
     xhr.send(formData);
@@ -362,6 +409,12 @@ async function loadDeviceStatus() {
   if (status) {
     if (dom.touchThresholdInput) dom.touchThresholdInput.value = status.touchThreshold;
     if (dom.sleepDelayInput) dom.sleepDelayInput.value = status.inactivityTimeoutMinutes;
+    if (dom.orientationRadios) {
+      dom.orientationRadios.forEach(radio => {
+        radio.checked = (radio.value === status.orientation);
+      });
+      applyCanvasOrientation(status.orientation);
+    }
   }
 }
 
@@ -375,10 +428,12 @@ function startTouchPolling() {
       if (dom.touchValueBar) {
         // Assuming a max value of ~65535 for touchRead for the progress bar
         const maxTouchVal = 65535;
-        // We want the bar to fill as the value gets *lower* (closer to a touch)
         const progress = 100 - (data.value / maxTouchVal * 100);
         dom.touchValueBar.value = progress;
       }
+    } else {
+      UI.updateStatus("Error getting touch value. Is the device asleep?", true);
+      stopTouchPolling()
     }
   }, 1000); // Poll every second
 }
@@ -391,17 +446,19 @@ function stopTouchPolling() {
 }
 
 function init() {
+  dom = UI.getDomElements();
+  ctx = UI.getCanvasContext(dom);
   UI.initTabs(dom);
   UI.initEventListeners(dom, eventHandlers);
   resetAdjustmentSlidersToDefault();
   UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
   UI.applyCanvasFitClass(dom, UI.getSelectedValues(dom).fitToScreen);
   if (dom.advancedControlsContainer) dom.advancedControlsContainer.style.display = 'none'; // Default hidden
-  UI.updateStatus(dom.statusInfo, "Ready. Select an image or .bin file.");
   loadDeviceStatus();
 
   // Listen for the custom event from ui.js to start/stop polling
   document.addEventListener('tabShown', (e) => {
+    UI.updateStatus(""); // Clear status when switching tabs
     if (e.detail.tabId === 'config') {
       loadDeviceStatus(); // Refresh status when tab is shown
       startTouchPolling();

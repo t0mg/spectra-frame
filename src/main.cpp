@@ -18,11 +18,15 @@ const char *AP_SSID = "SpectraFrameSetup";                                  // P
 const char *AP_PASSWORD = "spectra1234";                                    // Provided in the AP QR code
 const char *CONFIG_FILE = "/config.json";                                   // LittleFS path for persisting configuration
 const char *UPLOADED_IMAGE_PATH = "/image.bin";                             // LittleFS path for uploaded images
-const UDOUBLE FULL_IMAGE_SIZE = (EPD_13IN3E_WIDTH / 2) * EPD_13IN3E_HEIGHT; // 1200x1600 4bpp
+const UDOUBLE FULL_IMAGE_SIZE = (EPD_13IN3E_WIDTH / 2) * EPD_13IN3E_HEIGHT; // 1200x1600 4bpp (4 bits per pixel)
+const int BATT_ADC_PIN = 14;
+// Voltage divider: Assuming R1=150k (upper), R2=1M (lower). V_batt = V_adc * (R1+R2)/R2.
+const float BATT_VOLTAGE_DIVIDER_RATIO = (150000.0 + 1000000.0) / 1000000.0;
 
 // Default values for configurable parameters
 const unsigned long DEFAULT_INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const int DEFAULT_TOUCH_THRESHOLD = 52000; // Touch threshold: a touch is detected if touchRead() < this value. Lower threshold means less sensitive.
+const char* DEFAULT_ORIENTATION = "portrait";
 
 // --- Global Objects ---
 AsyncWebServer server(80);
@@ -38,6 +42,7 @@ struct Config
   String password;
   unsigned long inactivityTimeoutMs;
   int touchThreshold;
+  String orientation;
   // Add other settings here, e.g., default display mode, update interval
 };
 Config currentConfig;
@@ -53,12 +58,34 @@ HibernationManager hibernationManager(DEFAULT_INACTIVITY_TIMEOUT_MS);
 const int TOUCH_PIN = GPIO_NUM_4;
 bool lastTouchState = false; // To detect changes in touch state
 
+void printResetReason()
+{
+  esp_reset_reason_t reason = esp_reset_reason();
+  Debugf("Reset reason: %d - ", reason);
+  switch (reason)
+  {
+  case ESP_RST_UNKNOWN:    Debugln("Unknown"); break;
+  case ESP_RST_POWERON:    Debugln("Power on"); break;
+  case ESP_RST_EXT:        Debugln("External pin"); break;
+  case ESP_RST_SW:         Debugln("Software"); break;
+  case ESP_RST_PANIC:      Debugln("Panic/exception"); break;
+  case ESP_RST_INT_WDT:    Debugln("Interrupt watchdog"); break;
+  case ESP_RST_TASK_WDT:   Debugln("Task watchdog"); break;
+  case ESP_RST_WDT:        Debugln("Other watchdog"); break;
+  case ESP_RST_DEEPSLEEP:  Debugln("Exiting deep sleep"); break;
+  case ESP_RST_BROWNOUT:   Debugln("Brownout"); break;
+  case ESP_RST_SDIO:       Debugln("SDIO"); break;
+  default:                 Debugln("Other"); break;
+  }
+}
+
 void setupDisplay()
 {
-  DEV_Module_Init(); // Initialize GPIOs and SPI for EPD
+  DEV_Module_Init(); // Initialize GPIOs and SPI for EPD  
   if (displayMgr == nullptr)
   {
-    displayMgr = new DisplayManager(Paint, EPD_13IN3E_WIDTH, EPD_13IN3E_HEIGHT);
+    displayMgr = new DisplayManager(Paint, EPD_13IN3E_WIDTH, EPD_13IN3E_HEIGHT, 
+        currentConfig.orientation == "portrait" ? ROTATE_0 : ROTATE_90, hibernationManager, *ledManager);
     if (displayMgr->getDisplayBuffer() == nullptr)
     {
       Debugln("CRITICAL: DisplayManager failed to initialize its buffer. Halting.");
@@ -80,6 +107,7 @@ bool loadConfiguration()
   currentConfig.password = "";
   currentConfig.inactivityTimeoutMs = DEFAULT_INACTIVITY_TIMEOUT_MS;
   currentConfig.touchThreshold = DEFAULT_TOUCH_THRESHOLD;
+  currentConfig.orientation = DEFAULT_ORIENTATION;
   if (LittleFS.exists(CONFIG_FILE))
   {
     File configFile = LittleFS.open(CONFIG_FILE, "r");
@@ -104,10 +132,10 @@ bool loadConfiguration()
     currentConfig.password = doc["password"].as<String>();
     currentConfig.inactivityTimeoutMs = doc["inactivityTimeoutMs"] | DEFAULT_INACTIVITY_TIMEOUT_MS;
     currentConfig.touchThreshold = doc["touchThreshold"] | DEFAULT_TOUCH_THRESHOLD;
+    currentConfig.orientation = doc["orientation"] | DEFAULT_ORIENTATION;
     Debug("Config loaded: SSID=");
     Debugln(currentConfig.ssid.c_str());
-    Debugf("  Inactivity Timeout: %lu ms, Touch Threshold: %d\n",
-           currentConfig.inactivityTimeoutMs, currentConfig.touchThreshold);
+    Debugf("  Inactivity Timeout: %lu ms, Touch Threshold: %d, Orientation: %s\n", currentConfig.inactivityTimeoutMs, currentConfig.touchThreshold, currentConfig.orientation.c_str());
     return true;
   }
   Debugln("Config file not found.");
@@ -121,6 +149,7 @@ bool saveConfiguration()
   doc["password"] = currentConfig.password;
   doc["inactivityTimeoutMs"] = currentConfig.inactivityTimeoutMs;
   doc["touchThreshold"] = currentConfig.touchThreshold;
+  doc["orientation"] = currentConfig.orientation;
 
   File configFile = LittleFS.open(CONFIG_FILE, "w");
   if (!configFile)
@@ -405,6 +434,7 @@ void setupWebServer()
   server.serveStatic("/style.css", LittleFS, "/style.css");
   server.serveStatic("/js/config.js", LittleFS, "/js/config.js");
   server.serveStatic("/js/image-processor.js", LittleFS, "/js/image-processor.js");
+  server.serveStatic("/js/webgl-processor.js", LittleFS, "/js/webgl-processor.js");
   server.serveStatic("/js/main.js", LittleFS, "/js/main.js");
   server.serveStatic("/js/ui.js", LittleFS, "/js/ui.js");
   server.serveStatic("/js/utils.js", LittleFS, "/js/utils.js");
@@ -497,6 +527,26 @@ void setupWebServer()
     }
   });
 
+  // API endpoint to set orientation
+  server.on("/api/set_orientation", HTTP_POST, [](AsyncWebServerRequest *request) {
+    hibernationManager.resetActivityTimer();
+    if (request->hasParam("orientation", true)) {
+      String newOrientation = request->getParam("orientation", true)->value();
+      if (newOrientation == "portrait" || newOrientation == "landscape") {
+        currentConfig.orientation = newOrientation;
+        if (saveConfiguration()) {
+          request->send(200, "text/plain", "Orientation updated. Please restart the device for changes to take effect.");
+        } else {
+          request->send(500, "text/plain", "Failed to save configuration.");
+        }
+      } else {
+        request->send(400, "text/plain", "Invalid orientation value. Must be 'portrait' or 'landscape'.");
+      }
+    } else {
+      request->send(400, "text/plain", "Missing 'orientation' parameter.");
+    }
+  });
+
   // API endpoint for immediate sleep
   server.on("/api/sleep_now", HTTP_POST, [](AsyncWebServerRequest *request) {
     hibernationManager.resetActivityTimer(); // User interaction before sleep
@@ -515,8 +565,13 @@ void setupWebServer()
     doc["mode"] = WiFi.getMode() == WIFI_AP ? "AP" : "STA";
     doc["touchThreshold"] = currentConfig.touchThreshold;
     doc["inactivityTimeoutMinutes"] = currentConfig.inactivityTimeoutMs / (60 * 1000);
+    doc["orientation"] = currentConfig.orientation;
     doc["hibernationPaused"] = hibernationManager.isPaused();
     String response;
+
+    // Add battery voltage
+    float batt_voltage = (analogReadMilliVolts(BATT_ADC_PIN) / 1000.0) * BATT_VOLTAGE_DIVIDER_RATIO;
+    doc["batteryVoltage"] = batt_voltage;
     serializeJson(doc, response);
     request->send(200, "application/json", response);
   });
@@ -574,13 +629,11 @@ void showWebUIQRcode()
 {
   if (displayMgr->getCurrentContentType() != DisplayManager::DisplayContentType::URL_QR_CODE)
   {
-    if(ledManager) ledManager->setMode(LedMode::LED_MODE_DISPLAY_ACTIVE);
     Debugln("Displaying IP QR code.");
 
     String qrDataStr = "http://" + WiFi.localIP().toString();
     String connectedMsg = "Connected to " + currentConfig.ssid + " at " + qrDataStr;
-    displayMgr->showURLQRCode(qrDataStr.c_str(), connectedMsg.c_str(), "Scan to open the Web interface and upload a new image.");
-    if(ledManager) ledManager->setMode(LedMode::LED_MODE_IDLE);
+    displayMgr->showURLQRCode(qrDataStr.c_str(), connectedMsg.c_str(), "Scan to open the Web interface and upload a new image."); // LED handled internally
   }
   else
   {
@@ -592,29 +645,23 @@ void showWebUIQRcode()
 // --- Arduino Setup and Loop ---
 void setup()
 {
-#ifdef USE_DEBUG
-  Serial.begin(115200);
-  // while (!Serial)
-  //   ;
-#endif
-  Debugln("SpectraFrame is starting up...");
-  printWakeupReason();
+  // Initialize Serial for debug output early
+  Serial.begin(115200); 
+  // while (!Serial) ; // Uncomment if you want to wait for serial connection
 
-  Debugln("Initializing EPD hardware.");
-  setupDisplay();
-
-  Debugln("Hibernation: Configuring touch wakeup.");
-  // touchSleepWakeUpEnable will be called after config load
-  hibernationManager.pause();              // Pause hibernation manager until WiFi setup is complete
-
-  Debugln("Creating LedManager.");
+  // Initialize LED manager early for startup signals
   ledManager = new LedManager();
   ledManager->begin();
-  ledManager->setMode(LedMode::LED_MODE_BUSY);
 
-  Debugln("Creating OtaManager.");
-  otaManager = new OtaManager(hibernationManager, *ledManager);
-
+  printResetReason();
+  if (esp_reset_reason() == ESP_RST_BROWNOUT) {
+    Debugln("Brownout detected! Signaling with static red LED for 5s.");
+    ledManager->setMode(LedMode::LED_MODE_ERROR);
+    delay(5000); // Hold red LED for 5 seconds
+  }
+  Debugln("SpectraFrame is starting up...");
+  printWakeupReason();
+  
   Debugln("Mounting LittleFS.");
   if (!LittleFS.begin(true)) // Format LittleFS if not yet formatted
   {
@@ -624,9 +671,24 @@ void setup()
       ;
   }
 
-  Debugln("Loading configuration and connecting to WiFi.");
-  if (loadConfiguration())
-  { // True if config.json is found and loaded
+  Debugln("Loading configuration.");
+  loadConfiguration(); // Load config first, sets defaults if not found
+
+  Debugln("Initializing EPD hardware.");
+  setupDisplay(); // Now create display manager
+
+  Debugln("Hibernation: Configuring touch wakeup.");
+  hibernationManager.pause(); // Pause hibernation manager until WiFi setup is complete
+  ledManager->setMode(LedMode::LED_MODE_BUSY);
+
+  Debugln("Creating OtaManager.");
+  otaManager = new OtaManager(hibernationManager, *ledManager);
+
+  // Configure ADC for battery monitoring
+  analogSetPinAttenuation(BATT_ADC_PIN, ADC_11db);
+
+  Debugln("Connecting to WiFi.");
+  if (currentConfig.ssid.length() > 0) {
     hibernationManager.setInactivityTimeout(currentConfig.inactivityTimeoutMs);
     touchSleepWakeUpEnable(TOUCH_PIN, currentConfig.touchThreshold);
     if (connectToWiFi())
@@ -642,15 +704,13 @@ void setup()
     }
     else
     {
-      Debugln("Failed to connect with saved WiFi credentials. Starting AP mode. Hiberation timer paused.");
-      hibernationManager.setInactivityTimeout(currentConfig.inactivityTimeoutMs); // Apply default
-      touchSleepWakeUpEnable(TOUCH_PIN, currentConfig.touchThreshold); // Apply default
+      Debugln("Failed to connect with saved WiFi credentials. Starting AP mode.");
       startAPMode();
     }
   }
   else
   { // Config file not found
-    Debugln("Configuration not found. Starting AP mode. Hiberation timer paused.");
+    Debugln("Configuration not found or SSID not set. Starting AP mode.");
     hibernationManager.setInactivityTimeout(currentConfig.inactivityTimeoutMs); // Apply default
     touchSleepWakeUpEnable(TOUCH_PIN, currentConfig.touchThreshold); // Apply default
     startAPMode();
@@ -675,10 +735,10 @@ void loop()
   if (newImageReadyForDisplay)
   {
     newImageReadyForDisplay = false;
-    if(ledManager) ledManager->setMode(LedMode::LED_MODE_DISPLAY_ACTIVE);
     Debugln("New image detected in loop. Displaying...");
-    displayMgr->displayImageFile(UPLOADED_IMAGE_PATH);
+    displayMgr->displayImageFile(UPLOADED_IMAGE_PATH); // LED handled internally
     Debugln("Image display from loop complete.");
+    Debugf("[DEBUG] inactivityTimeoutMs after upload: %lu ms\n", currentConfig.inactivityTimeoutMs);
     hibernationManager.resetActivityTimer();
     if(ledManager) ledManager->setMode(LedMode::LED_MODE_IDLE);
   }
@@ -704,10 +764,11 @@ void loop()
       if(ledManager) ledManager->setMode(LedMode::LED_MODE_IDLE);
     }
 
+    // Debug: Log before checking hibernation
+    Debugf("[DEBUG] Checking hibernation: inactivityTimeoutMs=%lu, shouldGoToSleep=%d\n", currentConfig.inactivityTimeoutMs, hibernationManager.shouldGoToSleep());
     // Check for deep sleep conditions
     if (hibernationManager.shouldGoToSleep())
     {
-      if(ledManager) ledManager->setMode(LedMode::LED_MODE_DISPLAY_ACTIVE);
       if (!LittleFS.exists(UPLOADED_IMAGE_PATH))
       {
         displayMgr->showCenteredMessage("SpectraFrame is sleeping", "No image has been set.", "Touch bottom right corner to wake up.");

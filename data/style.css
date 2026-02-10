@@ -4,6 +4,7 @@ body {
   font-family: "Quicksand", Arial, sans-serif;
   text-align: center;
   margin: 0;
+  margin-bottom: 60px;
   padding: 20px;
   background-color: #f0f0f0;
   display: flex;
@@ -15,6 +16,7 @@ body {
   max-width: 1260px;
   width: 100%;
 }
+
 
 h1, h2 {
   margin-bottom: 20px;
@@ -67,6 +69,10 @@ canvas {
   border: 1px solid #ccc;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
   background-color: rgb(20, 20, 35);
+}
+
+.canvas-landscape {
+  transform: rotate(-90deg);
 }
 
 button, input[type='submit'] {
@@ -147,6 +153,11 @@ input[type='file'] {
   object-fit: contain;
 }
 
+.canvas-fit-screen.canvas-landscape {
+  max-height: calc(100vw - 120px);
+  max-width: none;
+}
+
 footer {
   padding-top: 15px;
   font-size: 0.8em;
@@ -163,6 +174,11 @@ footer a:hover {
 }
 
 .status {
+  position: fixed;
+  bottom: 0;
+  left:0;
+  right: 0;
+  text-align: center;
   font-family: monospace;
   background: #eee;
   font-size: 1.1em;
@@ -170,7 +186,7 @@ footer a:hover {
   padding: 8px;
   border-radius: 4px;
   min-height: 1.5em;
-  word-wrap: break-word;
+  border-top: 1px solid #ccc;
 }
 
 .status > p {

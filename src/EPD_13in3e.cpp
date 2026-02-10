@@ -153,10 +153,11 @@ static void EPD_13IN3E_TurnOnDisplay(void)
   EPD_13IN3E_CS_ALL(0);
   EPD_13IN3E_SendCommand(0x04); // POWER_ON
   EPD_13IN3E_CS_ALL(1);
+  DEV_Delay_ms(100); // Wait for LDO2/Power to catch up
   EPD_13IN3E_ReadBusyH();
 
   Debug("Write DRF \r\n");
-  DEV_Delay_ms(50);
+  DEV_Delay_ms(200); // Extra stabilization before high-power refresh
   EPD_13IN3E_CS_ALL(0);
   EPD_13IN3E_SPI_Sand(DRF, DRF_V, sizeof(DRF_V));
   EPD_13IN3E_CS_ALL(1);
@@ -166,7 +167,7 @@ static void EPD_13IN3E_TurnOnDisplay(void)
   EPD_13IN3E_CS_ALL(0);
   EPD_13IN3E_SPI_Sand(POF, POF_V, sizeof(POF_V));
   EPD_13IN3E_CS_ALL(1);
-  // EPD_13IN3E_ReadBusyH();
+  EPD_13IN3E_ReadBusyH();
   Debug("Display Done!! \r\n");
 }
 

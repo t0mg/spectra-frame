@@ -44,14 +44,15 @@
 /**
  * GPIO config
  **/
-#define EPD_SCK_PIN 12
-#define EPD_MOSI_PIN 11
-#define EPD_CS_M_PIN 10
+#define EPD_SCK_PIN 36 // 12
+#define EPD_MOSI_PIN 35 // 11
+#define EPD_CS_M_PIN 34 // 10
 #define EPD_CS_S_PIN 9
 #define EPD_DC_PIN 8
 #define EPD_RST_PIN 7
 #define EPD_BUSY_PIN 6
 #define EPD_PWR_PIN 5
+#define LDO2_PIN 17 // ProS3 LDO2 enable pin
 
 #define GPIO_PIN_SET 1
 #define GPIO_PIN_RESET 0

@@ -1,24 +1,40 @@
 #include "LedManager.h"
 
-LedManager::LedManager() : _currentLedMode(LedMode::LED_MODE_OFF), _targetLedColor(CRGB::Black), _ledBpm(60), _isBreathingMode(false)
+LedManager::LedManager() : _currentLedMode(LedMode::LED_MODE_OFF), _currentLedColor(LedColor::Black()), _targetLedColor(LedColor::Black()), _ledBpm(60), _isBreathingMode(false)
 {
   // Constructor
 }
 
 void LedManager::begin()
 {
-  FastLED.addLeds<NEOPIXEL, LED_PIN>(leds, NUM_LEDS);
-  FastLED.setBrightness(LED_MAX_BRIGHTNESS); // Set global max brightness for FastLED
+  // On ProS3, GPIO 17 enables LDO2 which powers the onboard LED
+  pinMode(LDO2_PIN, OUTPUT);
+  digitalWrite(LDO2_PIN, HIGH);
+  Debugln("LDO2 enabled for LED power.");
+
   setMode(LedMode::LED_MODE_OFF);            // Start with LEDs off
   Debugln("LedManager initialized.");
 }
 
+void LedManager::writeLed(LedColor color)
+{
+  _currentLedColor = color;
+  neopixelWrite(LED_PIN, color.r, color.g, color.b);
+}
+
 void LedManager::updateBreathingLed()
 {
-  uint8_t brightness = beatsin8(_ledBpm, 0, 255); // Use FastLED's full range for beatsin8
-  leds[0] = _targetLedColor;
-  leds[0].nscale8(brightness);
-  FastLED.show();
+  // Simple beatsin8 replacement using sine wave
+  // beatsin8(bpm, low, high)
+  float phase = (millis() * _ledBpm * 2.0 * PI) / 60000.0;
+  uint8_t brightness = (uint8_t)((sin(phase) + 1.0) * 127.5);
+  
+  LedColor dimmedColor;
+  dimmedColor.r = (_targetLedColor.r * brightness) / 255;
+  dimmedColor.g = (_targetLedColor.g * brightness) / 255;
+  dimmedColor.b = (_targetLedColor.b * brightness) / 255;
+  
+  writeLed(dimmedColor);
 }
 
 void LedManager::setMode(LedMode mode)
@@ -31,45 +47,40 @@ void LedManager::setMode(LedMode mode)
   switch (mode)
   {
   case LedMode::LED_MODE_OFF:
-    leds[0] = CRGB::Black;
-    FastLED.show();
+    writeLed(LedColor::Black());
     break;
   case LedMode::LED_MODE_OTA_SUCCESS: // Static Green
-    _targetLedColor = CRGB::Green;
-    leds[0] = _targetLedColor;
-    // FastLED.setBrightness will cap this if LED_MAX_BRIGHTNESS is lower than 255
-    FastLED.show();
-    break;
-  case LedMode::LED_MODE_DISPLAY_ACTIVE: // Static Teal
-    _targetLedColor = CRGB::Teal;
-    leds[0] = _targetLedColor;
-    FastLED.show();
+    _targetLedColor = LedColor::Green();
+    writeLed(_targetLedColor);
     break;
 
   // Breathing modes: set color and BPM
-  case LedMode::LED_MODE_ERROR:
-    _targetLedColor = CRGB::Red;
-    _ledBpm = 240; // Very fast pulse
+  case LedMode::LED_MODE_DISPLAY_ACTIVE: // Fast green blink
+    _targetLedColor = LedColor::Green();
+    _ledBpm = 180; // Fast pulse
     _isBreathingMode = true;
     break;
+  case LedMode::LED_MODE_ERROR:
+    _targetLedColor = LedColor::Red();
+    writeLed(_targetLedColor);
+    break;
   case LedMode::LED_MODE_BUSY:
-    _targetLedColor = CRGB::Orange;
-    _ledBpm = 120; // Fast pulse
+    _targetLedColor = LedColor::Red();
+    _ledBpm = 180; // Fast pulse
     _isBreathingMode = true;
     break;
   case LedMode::LED_MODE_IDLE:
-    _targetLedColor = CRGB::White;
-    _ledBpm = 60; // Slow pulse
+    _targetLedColor = LedColor::Red();
+    _ledBpm = 30; // Slow pulse
     _isBreathingMode = true;
     break;
   case LedMode::LED_MODE_AP:
-    _targetLedColor = CRGB::Green; // Distinct Green for AP mode
-    _ledBpm = 60;                  // Slow pulse
+    _targetLedColor = LedColor::Green(); // Distinct Green for AP mode
+    _ledBpm = 30;
     _isBreathingMode = true;
     break;
   default:
-    leds[0] = CRGB::Black;
-    FastLED.show();
+    writeLed(LedColor::Black());
     break;
   }
 
@@ -87,6 +98,4 @@ void LedManager::update()
   {
     updateBreathingLed();
   }
-  // For static modes, FastLED.show() was already called in setMode.
-  // No continuous update needed unless the mode itself implies animation.
 }

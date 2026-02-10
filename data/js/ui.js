@@ -1,6 +1,12 @@
 const DEFAULT_TAB = 'upload'; // Default tab to show
 
+let _globalStatusElement = null; // Module-level variable for the global status element
+let _globalProgressBarElement = null; // Module-level variable for the global progress bar element
+
 export function getDomElements() {
+  _globalStatusElement = document.getElementById('statusInfo');
+  _globalProgressBarElement = document.getElementById('progressBar');
+
   return {
     // Dithering Tab Elements
     uploadInput: document.getElementById('uploadInput'),
@@ -10,8 +16,6 @@ export function getDomElements() {
     downloadCArrayButton: document.getElementById('downloadCArrayButton'),
     downloadBinButton: document.getElementById('downloadBinButton'),
     uploadToDeviceButton: document.getElementById('uploadToDeviceButton'),
-    statusInfo: document.getElementById('statusInfo'),
-    uploadProgressBar: document.getElementById('uploadProgressBar'),
     canvas: document.getElementById('canvas'),
     scalingOptionSelect: document.getElementById('scalingOption'),
     rotateSourceButton: document.getElementById('rotateSourceButton'),
@@ -32,24 +36,21 @@ export function getDomElements() {
     wifiConfigForm: document.getElementById('wifiConfigForm'),
     wifiSsidInput: document.getElementById('wifiSsid'),
     wifiPasswordInput: document.getElementById('wifiPassword'),
-    wifiConfigStatus: document.getElementById('wifiConfigStatus'),
+    orientationRadios: document.querySelectorAll('input[name="orientation"]'),
+
     // Device Settings in Config Tab
     touchValueSpan: document.getElementById('touchValue'),
     touchValueBar: document.getElementById('touchValueBar'),
     touchThresholdInput: document.getElementById('touchThresholdInput'),
     saveTouchThresholdButton: document.getElementById('saveTouchThresholdButton'),
-    touchConfigStatus: document.getElementById('touchConfigStatus'),
     sleepDelayInput: document.getElementById('sleepDelayInput'),
     saveSleepDelayButton: document.getElementById('saveSleepDelayButton'),
-    sleepConfigStatus: document.getElementById('sleepConfigStatus'),
     sleepNowButton: document.getElementById('sleepNowButton'),
 
     // OTA Tab Elements
     otaConfigForm: document.getElementById('firmwareUploadForm'),
     otaFileInput: document.getElementById('updateFile'),
     otaUpdateType: document.getElementById('otaUpdateTypeSection'),
-    otaStatus: document.getElementById('otaStatus'),
-    otaProgressBar: document.getElementById('otaProgressBar'),
   };
 }
 
@@ -124,6 +125,10 @@ export function initEventListeners(dom, handlers) {
   // Config Tab
   dom.wifiConfigForm.addEventListener('submit', handlers.onWifiConfigSave);
 
+  dom.orientationRadios.forEach(radio => {
+    radio.addEventListener('change', handlers.onOrientationChange);
+  });
+
   // Device Settings in Config Tab
   dom.saveTouchThresholdButton.addEventListener('click', handlers.onSaveTouchThreshold);
   dom.saveSleepDelayButton.addEventListener('click', handlers.onSaveSleepDelay);
@@ -133,18 +138,21 @@ export function initEventListeners(dom, handlers) {
   dom.otaConfigForm.addEventListener('submit', handlers.onFirmwareUpload);
 }
 
-export async function updateStatus(domTarget, message, isError = false) {
-  if (!domTarget) return;
+export async function updateStatus(message, isError = false) {
   await new Promise(resolve => requestAnimationFrame(resolve));
-  domTarget.textContent = message;
-  domTarget.style.color = isError ? 'red' : '';
+  if (!_globalStatusElement) return; // Ensure it's initialized
+  _globalStatusElement.textContent = message;
+  _globalStatusElement.style.color = isError ? 'red' : '';
   await new Promise(resolve => requestAnimationFrame(resolve));
 }
 
-export function updateUploadProgress(dom, percentage) {
-  if (dom.uploadProgressBar) {
-    dom.uploadProgressBar.value = percentage;
-    dom.uploadProgressBar.style.display = (percentage > 0 && percentage < 100) ? 'block' : 'none';
+export function updateUploadProgress(percentage) {
+  if (!_globalProgressBarElement) return; // Ensure it's initialized
+  _globalProgressBarElement.value = percentage;
+  // Only show the progress bar if there's actual progress (not 0 or 100)
+  _globalProgressBarElement.style.display = (percentage > 0 && percentage < 100) ? 'block' : 'none';
+  if (percentage === 100) { // Hide after completion
+    _globalProgressBarElement.style.display = 'none';
   }
 }
 

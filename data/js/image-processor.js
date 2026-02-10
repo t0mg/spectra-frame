@@ -167,33 +167,6 @@ export function applyFloydSteinbergDithering(imageData, colors) {
   }
 }
 
-function generateRandomNoise(width, height) {
-  const noise = new Array(height);
-  for (let y = 0; y < height; y++) {
-    noise[y] = new Array(width);
-    for (let x = 0; x < width; x++) {
-      noise[y][x] = Math.random() * 255;
-    }
-  }
-  return noise;
-}
-
-export function applyBlueNoiseDithering(imageData, colors) {
-  const pixels = imageData.data;
-  const noise = generateRandomNoise(imageData.width, imageData.height);
-  for (let y = 0; y < imageData.height; y++) {
-    for (let x = 0; x < imageData.width; x++) {
-      const index = (y * imageData.width + x) * 4;
-      const thresholdValue = noise[y][x];
-      const grayscale = pixels[index] * 0.299 + pixels[index + 1] * 0.587 + pixels[index + 2] * 0.114;
-      const ditheredGrayscale = grayscale > thresholdValue ? 255 : 0;
-      const tempPixel = { r: ditheredGrayscale, g: ditheredGrayscale, b: ditheredGrayscale };
-      const newPixel = findNearestColor(tempPixel, colors);
-      pixels[index] = newPixel.r; pixels[index + 1] = newPixel.g; pixels[index + 2] = newPixel.b;
-    }
-  }
-}
-
 function distributeAtkinsonError(pixels, width, height, x, y, quantError) {
   if (x + 1 < width) applyDistributedError(pixels, width, x + 1, y, quantError, ERROR_ATKINSON_P1_Y0);
   if (x + 2 < width) applyDistributedError(pixels, width, x + 2, y, quantError, ERROR_ATKINSON_P2_Y0);

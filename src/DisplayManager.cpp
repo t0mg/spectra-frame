@@ -7,19 +7,22 @@
 #include "LittleFS.h"
 
 // External HibernationManager instance (declared in main.cpp)
-extern HibernationManager hibernationManager;
 
 // Initialize the static RTC data member
 RTC_DATA_ATTR DisplayManager::DisplayContentType DisplayManager::rtcDisplayContentType = DisplayManager::DisplayContentType::UNKNOWN;
 
-DisplayManager::DisplayManager(PAINT &paint_instance, UWORD displayWidth, UWORD displayHeight)
+DisplayManager::DisplayManager(PAINT &paint_instance, UWORD displayWidth, UWORD displayHeight, UWORD orientation,
+                               HibernationManager &hibernationMgr, LedManager &ledMgr)
     : _paint_ref(paint_instance),
       _displayWidth(displayWidth),
       _displayHeight(displayHeight),
       _imageBuffer(nullptr),
       _bufferSize((EPD_13IN3E_WIDTH / 2) * EPD_13IN3E_HEIGHT), // 4bpp: 1 byte for 2 pixels
       _epdHardwareInitialized(false),
-      _currentContentType(DisplayContentType::UNKNOWN)
+      _currentContentType(DisplayContentType::UNKNOWN),
+      _orientation(orientation)
+      , _hibernationManager(hibernationMgr)
+      , _ledManager(ledMgr)
 {
 
   _imageBuffer = (UBYTE *)malloc(_bufferSize);
@@ -32,7 +35,10 @@ DisplayManager::DisplayManager(PAINT &paint_instance, UWORD displayWidth, UWORD 
   }
   Debugf("DisplayManager image buffer allocated: %lu bytes\r\n", (unsigned long)_bufferSize);
   // Initialize the Paint library to use this buffer
-  Paint_NewImage(_imageBuffer, _displayWidth, _displayHeight, ROTATE_0, EPD_13IN3E_WHITE);
+  Paint_NewImage(_imageBuffer, displayWidth, displayHeight, _orientation, EPD_13IN3E_WHITE);
+  // Update logical width/height based on rotation from the global Paint object
+  _displayWidth = Paint.Width;
+  _displayHeight = Paint.Height;
   Paint_SetScale(7);             // Crucial for 4bpp operation with GUI_Paint
   Paint_Clear(EPD_13IN3E_WHITE); // Clear buffer to EPD white
   this->_currentContentType = DisplayContentType::CLEARED;
@@ -170,8 +176,8 @@ void DisplayManager::showCenteredMessage(const char *title,
   // Note: This is a simplified message display. For true multi-line centered text,
   // you'd need to calculate total text block height and adjust boxYstart accordingly,
   // or pre-calculate line breaks.
-  this->display();
   _currentContentType = DisplayContentType::MESSAGE;
+  this->display();
 }
 
 void DisplayManager::drawQRCode(int xOffset, int yOffset, const qrcodegen::QrCode &qr, int scale, UWORD foregroundColor, UWORD backgroundColor)
@@ -247,8 +253,8 @@ void DisplayManager::showWiFiAPQRCode(const char *ssid, const char *password, co
     Paint_DrawString_EN(captionX, captionY, caption, captionFont, WHITE, BLACK);
   }
 
-  this->display();
   _currentContentType = DisplayContentType::AP_QR_CODE;
+  this->display();
 }
 
 void DisplayManager::showURLQRCode(const char *url, const char *caption, const char *additionalInfo)
@@ -319,8 +325,8 @@ void DisplayManager::showURLQRCode(const char *url, const char *caption, const c
     Paint_DrawString_EN(infoX, currentTextY, additionalInfo, infoFont, WHITE, BLACK);
   }
 
-  this->display();
   _currentContentType = DisplayContentType::URL_QR_CODE;
+  this->display();
 }
 
 void DisplayManager::initializeEPDHardwareIfNeeded()
@@ -342,20 +348,31 @@ void DisplayManager::sleepEPDHardware()
 
 void DisplayManager::display()
 {
-  initializeEPDHardwareIfNeeded();
-  hibernationManager.pause();
+  _hibernationManager.pause();
   Debugln("DisplayManager: Sending buffer to EPD (EPD_13IN3E_Display)...");
+
+  // LED indicator for display update
+  _ledManager.setMode(LedMode::LED_MODE_DISPLAY_ACTIVE);
+  unsigned long startTime = millis();
+  while (millis() - startTime < 2000) // Blink green fast for 2 seconds
+  {
+    _ledManager.update();
+    delay(10);
+  }
+  _ledManager.setMode(LedMode::LED_MODE_OFF); // Turn LED off during actual update
+
+  initializeEPDHardwareIfNeeded();
+  sleep(10);
   EPD_13IN3E_Display(_imageBuffer); // Display the content of the internal buffer
   Debugln("DisplayManager: EPD display complete.");
-  saveStateToRTC();
-  hibernationManager.resumeAndReset();
+  sleep(100);
   sleepEPDHardware();
+  saveStateToRTC();
+  _hibernationManager.resumeAndReset();
 }
 
 void DisplayManager::displayImageFile(const char *filePath)
 {
-  initializeEPDHardwareIfNeeded(); // This will also clear the buffer via Paint_Clear in init
-
   File imageFile = LittleFS.open(filePath, "r");
   if (!imageFile)
   {
@@ -373,8 +390,8 @@ void DisplayManager::displayImageFile(const char *filePath)
     return;
   }
   Debugf("DisplayManager: Image %s loaded to buffer. Displaying...\n", filePath);
-  this->display();
   _currentContentType = DisplayContentType::IMAGE_FILE;
+  this->display();
 }
 
 void DisplayManager::clearDisplayAndRefresh()

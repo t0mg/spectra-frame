@@ -3,8 +3,15 @@
 #include "EPD_13in3e.h" // For EPD_13IN3E_Sleep
 #include "DEV_Config.h" // For DEV_Module_Exit
 
+#define HIBERNATION_MIN_TIMEOUT_MS 10000 // 10 secondes minimum
+
 HibernationManager::HibernationManager(unsigned long timeoutMillis) {
-    inactivityTimeoutMillis = timeoutMillis;
+    if (timeoutMillis < HIBERNATION_MIN_TIMEOUT_MS) {
+        Debugf("Warning: inactivityTimeoutMillis too low (%lu ms), forced to %d ms\n", timeoutMillis, HIBERNATION_MIN_TIMEOUT_MS);
+        inactivityTimeoutMillis = HIBERNATION_MIN_TIMEOUT_MS;
+    } else {
+        inactivityTimeoutMillis = timeoutMillis;
+    }
     lastActivityTimeMillis = millis(); // Initialize with current time
     paused = false;
 }
@@ -27,7 +34,10 @@ void HibernationManager::resumeAndReset() {
 
 bool HibernationManager::shouldGoToSleep() {
     if (paused) return false; // Don't go to sleep if paused
-    if (millis() - lastActivityTimeMillis > inactivityTimeoutMillis) {
+    unsigned long now = millis();
+    unsigned long elapsed = now - lastActivityTimeMillis;
+    Debugf("[HIBERNATION DEBUG] now=%lu, lastActivity=%lu, elapsed=%lu, timeout=%lu\n", now, lastActivityTimeMillis, elapsed, inactivityTimeoutMillis);
+    if (elapsed > inactivityTimeoutMillis) {
         Debugln("Hibernation: Inactivity timeout reached.");
         return true;
     }
@@ -59,7 +69,12 @@ void HibernationManager::goToDeepSleep() {
 }
 
 void HibernationManager::setInactivityTimeout(unsigned long timeoutMs) {
-    inactivityTimeoutMillis = timeoutMs;
+    if (timeoutMs < HIBERNATION_MIN_TIMEOUT_MS) {
+        Debugf("Warning: inactivityTimeoutMillis too low (%lu ms), forced to %d ms\n", timeoutMs, HIBERNATION_MIN_TIMEOUT_MS);
+        inactivityTimeoutMillis = HIBERNATION_MIN_TIMEOUT_MS;
+    } else {
+        inactivityTimeoutMillis = timeoutMs;
+    }
     resetActivityTimer();
 }
 

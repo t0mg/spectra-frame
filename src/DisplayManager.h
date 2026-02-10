@@ -4,6 +4,8 @@
 #include "GUI_Paint.h"   // Waveshare paint library
 #include "fonts.h"       // Waveshare fonts
 #include "EPD_13in3e.h"  // Waveshare EPD color definitions and EPD_13IN3E_WIDTH/HEIGHT
+#include "HibernationManager.h" // For pausing/resuming hibernation
+#include "LedManager.h" // For LED control
 #include "qrcodegen.hpp" // QR code library from https://github.com/nayuki/QR-Code-generator
 
 // Forward declaration for QrCode class from the qrcodegen namespace
@@ -25,7 +27,7 @@ public:
     CLEARED
   };
 
-  DisplayManager(PAINT &paint_instance, UWORD displayWidth, UWORD displayHeight);
+  DisplayManager(PAINT &paint_instance, UWORD displayWidth, UWORD displayHeight, UWORD orientation, HibernationManager &hibernationMgr, LedManager &ledMgr);
   ~DisplayManager();
 
   void showCenteredMessage(const char *title,
@@ -51,10 +53,13 @@ private:
   PAINT &_paint_ref; // Reference to the global Paint object
   UWORD _displayWidth;
   UWORD _displayHeight;
+  UWORD _orientation;
   UBYTE *_imageBuffer;
   const UDOUBLE _bufferSize;
   bool _epdHardwareInitialized;
   DisplayContentType _currentContentType;
+  HibernationManager &_hibernationManager; // Reference to HibernationManager
+  LedManager &_ledManager; // Reference to LedManager
 
   static RTC_DATA_ATTR DisplayContentType rtcDisplayContentType; // Persists across deep sleep
 

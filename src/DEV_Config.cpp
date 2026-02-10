@@ -32,7 +32,7 @@
 
 void GPIO_Config(void)
 {
-  pinMode(EPD_BUSY_PIN, INPUT);  // EPD Busy -> Input
+  pinMode(EPD_BUSY_PIN, INPUT_PULLUP);  // EPD Busy -> Input with Pull-up
   pinMode(EPD_RST_PIN, OUTPUT);  // EPD Reset -> Output
   pinMode(EPD_DC_PIN, OUTPUT);   // EPD Data/Command -> Output
   pinMode(EPD_PWR_PIN, OUTPUT);  // EPD Power -> Output
@@ -46,6 +46,10 @@ void GPIO_Config(void)
   digitalWrite(EPD_CS_S_PIN, HIGH);
   digitalWrite(EPD_SCK_PIN, LOW);
   digitalWrite(EPD_PWR_PIN, HIGH);
+
+  // ProS3 LDO2 power-on (ensure display and peripherals have stable power)
+  pinMode(LDO2_PIN, OUTPUT);
+  digitalWrite(LDO2_PIN, HIGH);
 }
 
 void GPIO_Mode(UWORD GPIO_Pin, UWORD Mode)
@@ -73,11 +77,11 @@ UBYTE DEV_Module_Init(void)
   // Initialize serial communication for debugging
   Serial.begin(115200);
 
-  // Initialize SPI hardware
+  // Initialize SPI hardware - reduced speed for stability during high-power refresh
   SPI.setDataMode(SPI_MODE0);
   SPI.setBitOrder(MSBFIRST);
-  SPI.setClockDivider(SPI_CLOCK_DIV4);
-  SPI.begin();
+  SPI.setClockDivider(SPI_CLOCK_DIV8); // 10MHz on 80MHz clock (better stability than DIV4)
+  SPI.begin(EPD_SCK_PIN, -1, EPD_MOSI_PIN, -1); // Explicit pin mapping for ProS3
 
   return 0;
 }
@@ -127,10 +131,10 @@ void DEV_SPI_Write_nByte(UBYTE *pData, UDOUBLE len)
   for (UDOUBLE i = 0; i < len; i++)
   { // Matched i to UDOUBLE type of len
     DEV_SPI_WriteByte(pData[i]);
-    if ((i > 0) && (i % 512 == 0))
-    { // Yield periodically, e.g., every 512 bytes
-      yield();
-    }
+    // if ((i > 0) && (i % 512 == 0))
+    // { // Yield periodically, e.g., every 512 bytes
+    //   yield();
+    // }
   }
 }
 
