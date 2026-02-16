@@ -1,10 +1,8 @@
 #include "LedManager.h"
 
-LedManager *ledManager = nullptr;
-
 LedManager::LedManager() : _currentLedMode(LedMode::LED_MODE_OFF), _currentLedColor(LedColor::Black()), _targetLedColor(LedColor::Black()), _ledBpm(60), _isBreathingMode(false)
 {
-  ledManager = this;
+  // Constructor
 }
 
 void LedManager::begin()

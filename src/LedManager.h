@@ -33,8 +33,6 @@ enum class LedMode
   LED_MODE_EPD_POWERED
 };
 
-extern class LedManager *ledManager;
-
 class LedManager
 {
 public:
