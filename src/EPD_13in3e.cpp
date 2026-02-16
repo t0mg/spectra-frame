@@ -156,28 +156,12 @@ static void EPD_13IN3E_TurnOnDisplay(void)
   DEV_Delay_ms(100); // Wait for LDO2/Power to catch up
   EPD_13IN3E_ReadBusyH();
 
-#ifdef SEQUENTIAL_REFRESH
-  Debug("Write DRF Master\r\n");
-  DEV_Delay_ms(200); // Extra stabilization before high-power refresh
-  DEV_Digital_Write(EPD_CS_M_PIN, 0);
-  EPD_13IN3E_SPI_Sand(DRF, DRF_V, sizeof(DRF_V));
-  DEV_Digital_Write(EPD_CS_M_PIN, 1);
-  EPD_13IN3E_ReadBusyH();
-
-  Debug("Write DRF Slave\r\n");
-  DEV_Delay_ms(200); // Extra stabilization before high-power refresh
-  DEV_Digital_Write(EPD_CS_S_PIN, 0);
-  EPD_13IN3E_SPI_Sand(DRF, DRF_V, sizeof(DRF_V));
-  DEV_Digital_Write(EPD_CS_S_PIN, 1);
-  EPD_13IN3E_ReadBusyH();
-#else
   Debug("Write DRF \r\n");
   DEV_Delay_ms(200); // Extra stabilization before high-power refresh
   EPD_13IN3E_CS_ALL(0);
   EPD_13IN3E_SPI_Sand(DRF, DRF_V, sizeof(DRF_V));
   EPD_13IN3E_CS_ALL(1);
   EPD_13IN3E_ReadBusyH();
-#endif
 
   Debug("Write POF \r\n");
   EPD_13IN3E_CS_ALL(0);
