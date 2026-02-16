@@ -29,20 +29,6 @@
 ******************************************************************************/
 #include <SPI.h>
 #include "DEV_Config.h"
-#include "LedManager.h"
-
-void DEV_Delay_ms(UDOUBLE xms)
-{
-  uint32_t start = millis();
-  while (millis() - start < xms)
-  {
-    if (ledManager)
-    {
-      ledManager->update();
-    }
-    delay(1);
-  }
-}
 
 void GPIO_Config(void)
 {

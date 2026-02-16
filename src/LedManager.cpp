@@ -82,9 +82,7 @@ void LedManager::setMode(LedMode mode)
     _isBreathingMode = true;
     break;
   case LedMode::LED_MODE_EPD_POWERED:
-    _targetLedColor = LedColor::Red();
-    _ledBpm = 30; // Slow pulse
-    _isBreathingMode = true;
+    writeLed(LedColor::Red());
     break;
   default:
     writeLed(LedColor::Black());

@@ -67,7 +67,7 @@
 /**
  * delay x ms
  **/
-void DEV_Delay_ms(UDOUBLE xms);
+#define DEV_Delay_ms(__xms) delay(__xms)
 
 /*------------------------------------------------------------------------------------------------------*/
 UBYTE DEV_Module_Init(void);
