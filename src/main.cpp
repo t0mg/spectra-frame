@@ -29,6 +29,7 @@ const int DEFAULT_TOUCH_THRESHOLD = 52000; // Touch threshold: a touch is detect
 const char* DEFAULT_ORIENTATION = "portrait";
 
 // --- Global Objects ---
+LedManager *ledManager = nullptr;
 AsyncWebServer server(80);
 DNSServer dnsServer;
 OtaManager *otaManager = nullptr;
