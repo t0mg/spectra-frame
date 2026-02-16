@@ -193,6 +193,9 @@ parameter:
 ******************************************************************************/
 void EPD_13IN3E_Init(void)
 {
+  DEV_Digital_Write(EPD_PWR_PIN, 1);
+  DEV_Digital_Write(EPD_POW_EN_PIN, 1);
+  DEV_Delay_ms(50);
   EPD_13IN3E_Reset();
   //    EPD_13IN3E_ReadBusyH();
 
@@ -504,4 +507,7 @@ void EPD_13IN3E_Sleep(void)
   EPD_13IN3E_SendCommand(0x07); // DEEP_SLEEP
   EPD_13IN3E_SendData(0XA5);
   EPD_13IN3E_CS_ALL(1);
+  DEV_Delay_ms(100);
+  DEV_Digital_Write(EPD_PWR_PIN, 0);
+  DEV_Digital_Write(EPD_POW_EN_PIN, 0);
 }

@@ -29,8 +29,11 @@ enum class LedMode
   LED_MODE_ERROR,
   LED_MODE_BUSY,
   LED_MODE_IDLE,
-  LED_MODE_AP
+  LED_MODE_AP,
+  LED_MODE_EPD_POWERED
 };
+
+extern class LedManager *ledManager;
 
 class LedManager
 {

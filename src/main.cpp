@@ -32,7 +32,6 @@ const char* DEFAULT_ORIENTATION = "portrait";
 AsyncWebServer server(80);
 DNSServer dnsServer;
 OtaManager *otaManager = nullptr;
-LedManager *ledManager = nullptr;
 const byte DNS_PORT = 53;
 
 // --- Configuration Structure ---

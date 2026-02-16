@@ -1,8 +1,10 @@
 #include "LedManager.h"
 
+LedManager *ledManager = nullptr;
+
 LedManager::LedManager() : _currentLedMode(LedMode::LED_MODE_OFF), _currentLedColor(LedColor::Black()), _targetLedColor(LedColor::Black()), _ledBpm(60), _isBreathingMode(false)
 {
-  // Constructor
+  ledManager = this;
 }
 
 void LedManager::begin()
@@ -77,6 +79,11 @@ void LedManager::setMode(LedMode mode)
   case LedMode::LED_MODE_AP:
     _targetLedColor = LedColor::Green(); // Distinct Green for AP mode
     _ledBpm = 30;
+    _isBreathingMode = true;
+    break;
+  case LedMode::LED_MODE_EPD_POWERED:
+    _targetLedColor = LedColor::Red();
+    _ledBpm = 30; // Slow pulse
     _isBreathingMode = true;
     break;
   default:

@@ -52,6 +52,7 @@
 #define EPD_RST_PIN 7
 #define EPD_BUSY_PIN 6
 #define EPD_PWR_PIN 5
+#define EPD_POW_EN_PIN 39
 #define LDO2_PIN 17 // ProS3 LDO2 enable pin
 
 #define GPIO_PIN_SET 1
@@ -66,7 +67,7 @@
 /**
  * delay x ms
  **/
-#define DEV_Delay_ms(__xms) delay(__xms)
+void DEV_Delay_ms(UDOUBLE xms);
 
 /*------------------------------------------------------------------------------------------------------*/
 UBYTE DEV_Module_Init(void);
