@@ -36,6 +36,7 @@ void GPIO_Config(void)
   pinMode(EPD_RST_PIN, OUTPUT);  // EPD Reset -> Output
   pinMode(EPD_DC_PIN, OUTPUT);   // EPD Data/Command -> Output
   pinMode(EPD_PWR_PIN, OUTPUT);  // EPD Power -> Output
+  pinMode(EPD_POW_EN_PIN, OUTPUT); // EPD Power Enable -> Output
 
   pinMode(EPD_SCK_PIN, OUTPUT);  // SPI Clock -> Output
   pinMode(EPD_MOSI_PIN, OUTPUT); // SPI MOSI -> Output
@@ -45,9 +46,10 @@ void GPIO_Config(void)
   digitalWrite(EPD_CS_M_PIN, HIGH);
   digitalWrite(EPD_CS_S_PIN, HIGH);
   digitalWrite(EPD_SCK_PIN, LOW);
-  digitalWrite(EPD_PWR_PIN, HIGH);
+  digitalWrite(EPD_PWR_PIN, LOW);
+  digitalWrite(EPD_POW_EN_PIN, LOW);
 
-  // ProS3 LDO2 power-on (ensure display and peripherals have stable power)
+  // ProS3 LDO2 power-on (required for onboard LED and other peripherals)
   pinMode(LDO2_PIN, OUTPUT);
   digitalWrite(LDO2_PIN, HIGH);
 }
@@ -142,5 +144,6 @@ void DEV_Module_Exit(void)
 {
   // gpio
   digitalWrite(EPD_PWR_PIN, LOW);
+  digitalWrite(EPD_POW_EN_PIN, LOW);
   digitalWrite(EPD_RST_PIN, LOW);
 }

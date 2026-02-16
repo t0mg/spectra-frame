@@ -359,14 +359,15 @@ void DisplayManager::display()
     _ledManager.update();
     delay(10);
   }
-  _ledManager.setMode(LedMode::LED_MODE_OFF); // Turn LED off during actual update
 
   initializeEPDHardwareIfNeeded();
+  _ledManager.setMode(LedMode::LED_MODE_EPD_POWERED);
   sleep(10);
   EPD_13IN3E_Display(_imageBuffer); // Display the content of the internal buffer
   Debugln("DisplayManager: EPD display complete.");
   sleep(100);
   sleepEPDHardware();
+  _ledManager.setMode(LedMode::LED_MODE_OFF);
   saveStateToRTC();
   _hibernationManager.resumeAndReset();
 }
