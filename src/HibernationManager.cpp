@@ -65,6 +65,12 @@ void HibernationManager::goToDeepSleep() {
     #ifdef USE_DEBUG
     Serial.flush(); 
     #endif
+    
+    // Lock the Adafruit 4920 enable pin
+    gpio_hold_en(EPD_POW_EN_PIN);
+    gpio_pullup_dis(EPD_POW_EN_PIN);
+    gpio_pulldown_en(EPD_POW_EN_PIN);
+    
     esp_deep_sleep_start();
 }
 

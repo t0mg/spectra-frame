@@ -6,6 +6,7 @@
 #include <DNSServer.h>
 #include "Debug.h"      // Serial debug, go there to enable/disable
 #include "EPD_13in3e.h" // Waveshare E-Paper display driver
+#include "driver/gpio.h"
 #ifdef ARDUINO_UM_PROS3
 #include <esp32s3-arduino-helper.h>
 #endif
@@ -657,6 +658,12 @@ void setup()
   // Initialize Serial for debug output early
   Serial.begin(115200); 
   // while (!Serial) ; // Uncomment if you want to wait for serial connection
+
+  // Set up the Adafruit 4920 enable pin to lock during hibernation
+  gpio_hold_dis(EPD_POW_EN_PIN);
+  gpio_reset_pin(EPD_POW_EN_PIN);
+  gpio_set_direction(EPD_POW_EN_PIN, GPIO_MODE_OUTPUT);
+  gpio_set_level(EPD_POW_EN_PIN, 0);
 
   // Initialize LED manager early for startup signals
   ledManager = new LedManager();

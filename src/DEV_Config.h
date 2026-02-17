@@ -44,16 +44,16 @@
 /**
  * GPIO config
  **/
-#define EPD_SCK_PIN 36 // 12
-#define EPD_MOSI_PIN 35 // 11
-#define EPD_CS_M_PIN 34 // 10
-#define EPD_CS_S_PIN 9
-#define EPD_DC_PIN 8
-#define EPD_RST_PIN 7
-#define EPD_BUSY_PIN 6
-#define EPD_PWR_PIN 5
-#define EPD_POW_EN_PIN 39
-#define LDO2_PIN 17 // ProS3 LDO2 enable pin
+#define EPD_SCK_PIN GPIO_NUM_36 // 12
+#define EPD_MOSI_PIN GPIO_NUM_35 // 11
+#define EPD_CS_M_PIN GPIO_NUM_34 // 10
+#define EPD_CS_S_PIN GPIO_NUM_9
+#define EPD_DC_PIN GPIO_NUM_8
+#define EPD_RST_PIN GPIO_NUM_7
+#define EPD_BUSY_PIN GPIO_NUM_6
+#define EPD_PWR_PIN GPIO_NUM_5 // epaper display power control pin
+#define EPD_POW_EN_PIN GPIO_NUM_16 // Adafruit 4920 enable pin, must be RTC-capable
+#define LDO2_PIN GPIO_NUM_17 // ProS3 LDO2 enable pin
 
 #define GPIO_PIN_SET 1
 #define GPIO_PIN_RESET 0
