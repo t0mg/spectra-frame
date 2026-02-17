@@ -1,104 +1,109 @@
 #include "LedManager.h"
 
-LedManager::LedManager() : _currentLedMode(LedMode::LED_MODE_OFF), _currentLedColor(LedColor::Black()), _targetLedColor(LedColor::Black()), _ledBpm(60), _isBreathingMode(false)
+LedManager::LedManager() : _currentLedMode(LedMode::LED_MODE_OFF), _offMS(0), _fadeInMS(0), _onMS(0), _fadeOutMS(0), _patternStartTime(0)
 {
-  // Constructor
 }
 
 void LedManager::begin()
 {
-  // On ProS3, GPIO 17 enables LDO2 which powers the onboard LED
-  pinMode(LDO2_PIN, OUTPUT);
-  digitalWrite(LDO2_PIN, HIGH);
-  Debugln("LDO2 enabled for LED power.");
+  pinMode(LED_PIN, OUTPUT);
+  analogWrite(LED_PIN, 0);
 
-  setMode(LedMode::LED_MODE_OFF);            // Start with LEDs off
-  Debugln("LedManager initialized.");
+  setMode(LedMode::LED_MODE_OFF);
+  Debugln("LedManager initialized for monochrome external LED.");
 }
 
-void LedManager::writeLed(LedColor color)
+void LedManager::writeLed(uint8_t brightness)
 {
-  _currentLedColor = color;
-  neopixelWrite(LED_PIN, color.r, color.g, color.b);
+  analogWrite(LED_PIN, brightness);
 }
 
-void LedManager::updateBreathingLed()
+void LedManager::setBreathingPattern(uint32_t offMS, uint32_t fadeInMS, uint32_t onMS, uint32_t fadeOutMS)
 {
-  // Simple beatsin8 replacement using sine wave
-  // beatsin8(bpm, low, high)
-  float phase = (millis() * _ledBpm * 2.0 * PI) / 60000.0;
-  uint8_t brightness = (uint8_t)((sin(phase) + 1.0) * 127.5);
-  
-  LedColor dimmedColor;
-  dimmedColor.r = (_targetLedColor.r * brightness) / 255;
-  dimmedColor.g = (_targetLedColor.g * brightness) / 255;
-  dimmedColor.b = (_targetLedColor.b * brightness) / 255;
-  
-  writeLed(dimmedColor);
+  _offMS = offMS;
+  _fadeInMS = fadeInMS;
+  _onMS = onMS;
+  _fadeOutMS = fadeOutMS;
+  _patternStartTime = millis();
 }
 
 void LedManager::setMode(LedMode mode)
 {
   _currentLedMode = mode;
-  _isBreathingMode = false; // Reset breathing mode flag
 
   Debugf("LedManager: Setting mode to %d\r\n", static_cast<int>(mode));
 
   switch (mode)
   {
   case LedMode::LED_MODE_OFF:
-    writeLed(LedColor::Black());
+    setBreathingPattern(0, 0, 0, 0);
     break;
-  case LedMode::LED_MODE_OTA_SUCCESS: // Static Green
-    _targetLedColor = LedColor::Green();
-    writeLed(_targetLedColor);
+  case LedMode::LED_MODE_OTA_SUCCESS:
+    setBreathingPattern(0, 0, 1, 0); // Static ON
     break;
-
-  // Breathing modes: set color and BPM
-  case LedMode::LED_MODE_DISPLAY_ACTIVE: // Fast green blink
-    _targetLedColor = LedColor::Green();
-    _ledBpm = 180; // Fast pulse
-    _isBreathingMode = true;
+  case LedMode::LED_MODE_DISPLAY_ACTIVE:
+    setBreathingPattern(100, 200, 100, 200); // Fast pulse
     break;
   case LedMode::LED_MODE_ERROR:
-    _targetLedColor = LedColor::Red();
-    writeLed(_targetLedColor);
+    setBreathingPattern(100, 0, 100, 0); // Fast blink
     break;
   case LedMode::LED_MODE_BUSY:
-    _targetLedColor = LedColor::Red();
-    _ledBpm = 180; // Fast pulse
-    _isBreathingMode = true;
+    setBreathingPattern(200, 400, 200, 400); // Medium pulse
     break;
   case LedMode::LED_MODE_IDLE:
-    _targetLedColor = LedColor::Red();
-    _ledBpm = 30; // Slow pulse
-    _isBreathingMode = true;
+    setBreathingPattern(1000, 1000, 200, 1000); // Slow breathing
     break;
   case LedMode::LED_MODE_AP:
-    _targetLedColor = LedColor::Green(); // Distinct Green for AP mode
-    _ledBpm = 30;
-    _isBreathingMode = true;
+    setBreathingPattern(500, 500, 500, 500); // Steady breathing
     break;
   case LedMode::LED_MODE_EPD_POWERED:
-    writeLed(LedColor::Red());
+    setBreathingPattern(0, 0, 1, 0); // Static ON
     break;
   default:
-    writeLed(LedColor::Black());
+    setBreathingPattern(0, 0, 0, 0);
     break;
-  }
-
-  if (_isBreathingMode)
-  {
-    // For breathing modes, updateBreathingLed() in update() will handle animation.
-    // Show the first frame immediately.
-    updateBreathingLed();
   }
 }
 
 void LedManager::update()
 {
-  if (_isBreathingMode)
+  uint32_t totalPeriod = _offMS + _fadeInMS + _onMS + _fadeOutMS;
+  if (totalPeriod == 0)
   {
-    updateBreathingLed();
+    writeLed(0);
+    return;
   }
+
+  // Special case for static ON
+  if (_offMS == 0 && _fadeInMS == 0 && _fadeOutMS == 0 && _onMS > 0)
+  {
+    writeLed(255);
+    return;
+  }
+
+  uint32_t elapsed = (millis() - _patternStartTime) % totalPeriod;
+  uint8_t brightness = 0;
+
+  if (elapsed < _offMS)
+  {
+    brightness = 0;
+  }
+  else if (elapsed < _offMS + _fadeInMS)
+  {
+    brightness = (uint8_t)((elapsed - _offMS) * 255 / _fadeInMS);
+  }
+  else if (elapsed < _offMS + _fadeInMS + _onMS)
+  {
+    brightness = 255;
+  }
+  else if (_fadeOutMS > 0)
+  {
+    brightness = (uint8_t)(255 - (elapsed - (_offMS + _fadeInMS + _onMS)) * 255 / _fadeOutMS);
+  }
+  else
+  {
+    brightness = 0;
+  }
+
+  writeLed(brightness);
 }

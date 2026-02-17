@@ -6,20 +6,7 @@
 #include "Debug.h"
 
 // LED Configuration
-#define LED_PIN 18  // ProS3 onboard RGB LED
-#define LDO2_PIN 17 // ProS3 LDO2 enable pin
-#define NUM_LEDS 1
-#define LED_MAX_BRIGHTNESS 255 // Default max brightness
-
-struct LedColor {
-  uint8_t r;
-  uint8_t g;
-  uint8_t b;
-
-  static LedColor Black() { return {0, 0, 0}; }
-  static LedColor Red() { return {255, 0, 0}; }
-  static LedColor Green() { return {0, 255, 0}; }
-};
+#define LED_PIN 13  // External monochrome LED
 
 enum class LedMode
 {
@@ -41,15 +28,24 @@ public:
   void setMode(LedMode mode);
   void update(); // Call this in the main loop
 
-private:
-  LedColor _currentLedColor;
-  LedMode _currentLedMode;
-  LedColor _targetLedColor;
-  uint8_t _ledBpm;
-  bool _isBreathingMode;
+  /**
+   * Set a breathing pattern for the monochrome LED.
+   * @param offMS Duration in milliseconds the LED is completely off.
+   * @param fadeInMS Duration in milliseconds the LED takes to fade from 0 to 255.
+   * @param onMS Duration in milliseconds the LED is at full brightness.
+   * @param fadeOutMS Optional: Duration in milliseconds the LED takes to fade from 255 to 0.
+   */
+  void setBreathingPattern(uint32_t offMS, uint32_t fadeInMS, uint32_t onMS, uint32_t fadeOutMS = 0);
 
-  void updateBreathingLed();
-  void writeLed(LedColor color);
+private:
+  LedMode _currentLedMode;
+  uint32_t _offMS;
+  uint32_t _fadeInMS;
+  uint32_t _onMS;
+  uint32_t _fadeOutMS;
+  uint32_t _patternStartTime;
+
+  void writeLed(uint8_t brightness);
 };
 
 #endif // LED_MANAGER_H
