@@ -409,6 +409,7 @@ async function loadDeviceStatus() {
   if (status) {
     if (dom.touchThresholdInput) dom.touchThresholdInput.value = status.touchThreshold;
     if (dom.sleepDelayInput) dom.sleepDelayInput.value = status.inactivityTimeoutMinutes;
+    if (dom.voltageSpan) dom.voltageSpan.textContent = `${status.batteryVoltage}V`;
     if (dom.orientationRadios) {
       dom.orientationRadios.forEach(radio => {
         radio.checked = (radio.value === status.orientation);

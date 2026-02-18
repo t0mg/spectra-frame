@@ -7,8 +7,9 @@
 #include "Debug.h"      // Serial debug, go there to enable/disable
 #include "EPD_13in3e.h" // Waveshare E-Paper display driver
 #include "driver/gpio.h"
-#ifdef ARDUINO_UM_PROS3
-#include <esp32s3-arduino-helper.h>
+#ifdef ARDUINO_PROS3
+#include <UMS3.h> // UMS3 Helper library for ProS3-specific features
+UMS3 ums3;
 #endif
 
 // --- Thing Managers ---
@@ -23,7 +24,7 @@ const char *AP_PASSWORD = "spectra1234";                                    // P
 const char *CONFIG_FILE = "/config.json";                                   // LittleFS path for persisting configuration
 const char *UPLOADED_IMAGE_PATH = "/image.bin";                             // LittleFS path for uploaded images
 const UDOUBLE FULL_IMAGE_SIZE = (EPD_13IN3E_WIDTH / 2) * EPD_13IN3E_HEIGHT; // 1200x1600 4bpp (4 bits per pixel)
-#ifndef ARDUINO_UM_PROS3
+#ifndef ARDUINO_PROS3
 const int BATT_ADC_PIN = 14;
 // Voltage divider: Assuming R1=150k (upper), R2=1M (lower). V_batt = V_adc * (R1+R2)/R2.
 const float BATT_VOLTAGE_DIVIDER_RATIO = (150000.0 + 1000000.0) / 1000000.0;
@@ -576,8 +577,8 @@ void setupWebServer()
     String response;
 
     // Add battery voltage
-    #ifdef ARDUINO_UM_PROS3
-    float batt_voltage = getBatteryVoltage();
+    #ifdef ARDUINO_PROS3
+    float batt_voltage = ums3.getBatteryVoltage();
     #else
     float batt_voltage = (analogReadMilliVolts(BATT_ADC_PIN) / 1000.0) * BATT_VOLTAGE_DIVIDER_RATIO;
     #endif

@@ -4,10 +4,10 @@
 
 #include <Arduino.h>
 #include "Debug.h"
+#include "DEV_Config.h"
 
 // LED Configuration
 #define LED_PIN 18  // ProS3 onboard RGB LED
-#define LDO2_PIN 17 // ProS3 LDO2 enable pin
 #define NUM_LEDS 1
 #define LED_MAX_BRIGHTNESS 255 // Default max brightness
 
