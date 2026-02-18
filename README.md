@@ -169,6 +169,7 @@ To build the filesystem image in VS Code, go to PlatformIO panel and run Project
 To flash it:
 - from VS Code: kill all terminals or anything possibly keeping the COM port busy, then in PlatformIO panel, run Project Tasks > Upload Filesystem Image.
 - or upload using OTA, by selecting Filesystem and picking littlefs.bin.
+- from CLI: `pio run -t uploadfs`
 
 ## TODO
 

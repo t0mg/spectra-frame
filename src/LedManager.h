@@ -4,6 +4,7 @@
 
 #include <Arduino.h>
 #include "Debug.h"
+#include "DEV_Config.h"
 
 // LED Configuration
 #define LED_PIN 13  // External monochrome LED

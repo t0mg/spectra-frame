@@ -46,6 +46,7 @@ export function getDomElements() {
     sleepDelayInput: document.getElementById('sleepDelayInput'),
     saveSleepDelayButton: document.getElementById('saveSleepDelayButton'),
     sleepNowButton: document.getElementById('sleepNowButton'),
+    voltageSpan: document.getElementById('voltage'),
 
     // OTA Tab Elements
     otaConfigForm: document.getElementById('firmwareUploadForm'),

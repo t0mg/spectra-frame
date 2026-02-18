@@ -10,7 +10,7 @@
 
 <body>
   <div class="container">
-    <h1>SpectraFrame Control</h1>
+    <h1>SpectraFrame</h1>
 
     <div class="tab-navigation" role="tablist" aria-label="SpectraFrame Sections">
       <button id="ditheringTabButton" class="tab-button" data-tab="upload" role="tab" aria-selected="false"
@@ -95,6 +95,10 @@
     </div>
 
     <div id="config" class="tab-content" role="tabpanel" aria-labelledby="configTabButton">
+      <div id="batteryVoltage" class="battery-voltage">
+        Battery Voltage: <span id="voltage"></span>
+      </div>
+      
       <h2>WiFi Configuration</h2>
       <form id="wifiConfigForm" class="config-form-container">
         <div>
