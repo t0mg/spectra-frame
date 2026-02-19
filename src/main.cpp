@@ -666,6 +666,10 @@ void setup()
   gpio_set_direction(EPD_POW_EN_PIN, GPIO_MODE_OUTPUT);
   gpio_set_level(EPD_POW_EN_PIN, 0);
 
+  #ifdef ARDUINO_PROS3
+  ums3.begin();
+  #endif
+  
   // Initialize LED manager early for startup signals
   ledManager = new LedManager();
   ledManager->begin();
