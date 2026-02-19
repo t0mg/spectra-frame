@@ -28,6 +28,10 @@ OtaManager *otaManager = nullptr;
 WiFiManager *wifiMgr = nullptr;
 WebServerManager *webServerMgr = nullptr;
 
+// Configuration constants
+const int TOUCH_WAKEUP_DELTA = 2500; // Delta for wakeup (approx 1-5k)
+const unsigned long TOUCH_WAKE_DEBOUNCE = 2000; // Debounce time in ms
+
 bool lastTouchState = false; // To detect changes in touch state
 
 void printResetReason() {
@@ -92,7 +96,7 @@ void setup() {
 
     printResetReason();
     if (esp_reset_reason() == ESP_RST_BROWNOUT) {
-        Debugln("Brownout detected! Signaling with static red LED for 5s.");
+        Debugln("Brownout detected! Signaling with static LED for 5s.");
         ledManager->setMode(LedMode::LED_MODE_ERROR);
         delay(5000);
     }
@@ -129,11 +133,7 @@ void setup() {
     wifiMgr = new WiFiManager(configMgr, *displayMgr, *ledManager);
     webServerMgr = new WebServerManager(configMgr, *displayMgr, *hibernationMgr, *ledManager, *otaManager);
 
-#ifndef ARDUINO_PROS3
-    analogSetPinAttenuation(BATT_ADC_PIN, ADC_11db);
-#endif
-
-    touchSleepWakeUpEnable(TOUCH_PIN, configMgr.getConfig().touchThreshold);
+    touchSleepWakeUpEnable(TOUCH_PIN, TOUCH_WAKEUP_DELTA);
 
     Debugln("Connecting to WiFi.");
     if (configMgr.getConfig().ssid.length() > 0) {
@@ -156,7 +156,7 @@ void setup() {
     webServerMgr->begin();
     hibernationMgr->resetActivityTimer();
 
-    lastTouchState = (touchRead(TOUCH_PIN) < configMgr.getConfig().touchThreshold);
+    lastTouchState = (touchRead(TOUCH_PIN) > configMgr.getConfig().touchThreshold);
 
     Debugln("Setup complete.");
 }
@@ -180,13 +180,15 @@ void loop() {
 
         if (isCurrentlyTouched && !lastTouchState) {
             lastTouchState = true;
-            hibernationMgr->resetActivityTimer();
-            Debugln("Touch detected in active mode. Displaying URL QR code.");
-            ledManager->setMode(LedMode::LED_MODE_BUSY);
-            showWebUIQRcode();
+            if (millis() > TOUCH_WAKE_DEBOUNCE) {
+                hibernationMgr->resetActivityTimer();
+                Debugln("Touch detected in active mode. Displaying URL QR code.");
+                ledManager->setMode(LedMode::LED_MODE_BUSY);
+                showWebUIQRcode();
+            }
         } else if (!isCurrentlyTouched && lastTouchState) {
             lastTouchState = false;
-            ledManager->setMode(LedMode::LED_MODE_IDLE);
+            if (millis() > TOUCH_WAKE_DEBOUNCE) ledManager->setMode(LedMode::LED_MODE_IDLE);
         }
 
         if (hibernationMgr->shouldGoToSleep()) {
