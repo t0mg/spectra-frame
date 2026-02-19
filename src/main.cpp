@@ -701,11 +701,6 @@ void setup()
   Debugln("Creating OtaManager.");
   otaManager = new OtaManager(hibernationManager, *ledManager);
 
-  // Configure ADC for battery monitoring
-  #ifndef ARDUINO_UM_PROS3
-  analogSetPinAttenuation(BATT_ADC_PIN, ADC_11db);
-  #endif
-
   Debugln("Connecting to WiFi.");
   if (currentConfig.ssid.length() > 0) {
     hibernationManager.setInactivityTimeout(currentConfig.inactivityTimeoutMs);
