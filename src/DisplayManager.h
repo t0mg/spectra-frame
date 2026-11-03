@@ -44,7 +44,7 @@ public:
   void showWiFiAPQRCode(const char *ssid, const char *password, const char *securityType = "WPA", bool hidden = false, const char *caption = "Scan to Connect WiFi");
   void showURLQRCode(const char *url, const char *caption = "", const char *additionalInfo = nullptr);
 
-  void displayImageFile(const char *filePath);
+  bool displayImageFile(const char *filePath);
   void clearDisplayAndRefresh();                                  // Clears buffer to WHITE, displays, then sleeps EPD
   UBYTE *getDisplayBuffer();                                      // Allows external access to the buffer if absolutely needed before a display() call
   DisplayContentType getCurrentContentType() const { return _currentContentType; } // Get the current type of content being displayed
@@ -66,7 +66,7 @@ private:
   // Internal EPD and display methods
   void initializeEPDHardwareIfNeeded();
   void sleepEPDHardware();
-  void display(); // Sends current _imageBuffer to EPD, then sleeps EPD
+  bool display(); // Sends current _imageBuffer to EPD, then sleeps EPD
 
   // Helper methods
   void drawQRCode(int xOffset, int yOffset, const qrcodegen::QrCode &qr, int scale, UWORD foregroundColor, UWORD backgroundColor);

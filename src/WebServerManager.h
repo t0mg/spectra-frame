@@ -21,6 +21,14 @@ public:
     bool isNewImageReady() const { return _newImageReady; }
     void clearNewImageReady() { _newImageReady = false; }
 
+    static void setDisplayStatus(DisplayUpdateStatus status, const char* message = nullptr);
+    static void setDisplayInProgress(bool inProgress);
+    static bool isDisplayInProgress();
+    static void checkResetReason(esp_reset_reason_t reason);
+    static const char* getDisplayStatusString();
+    static const char* getDisplayStatusMessage();
+    static const char* getResetReasonString(esp_reset_reason_t reason);
+
 private:
     AsyncWebServer _server;
     ConfigManager& _configMgr;

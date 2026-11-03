@@ -18,4 +18,13 @@ static constexpr float BATT_VOLTAGE_DIVIDER_RATIO = (150000.0 + 1000000.0) / 100
 static constexpr const char* UPLOADED_IMAGE_PATH = "/image.bin";
 static constexpr uint32_t FULL_IMAGE_SIZE = (EPD_13IN3E_WIDTH / 2) * EPD_13IN3E_HEIGHT;
 
+// Display Update Status
+enum class DisplayUpdateStatus {
+    IDLE = 0,
+    UPDATING = 1,
+    SUCCESS = 2,
+    BROWNOUT = 3,
+    ERROR = 4
+};
+
 #endif // CONSTANTS_H

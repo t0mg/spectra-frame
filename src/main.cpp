@@ -101,6 +101,7 @@ void setup() {
     ledManager->begin();
 
     printResetReason();
+    WebServerManager::checkResetReason(esp_reset_reason());
     if (esp_reset_reason() == ESP_RST_BROWNOUT) {
         Debugln("Brownout detected! Signaling with static LED for 5s.");
         ledManager->setMode(LedMode::LED_MODE_ERROR);
@@ -176,9 +177,18 @@ void loop() {
 
     if (webServerMgr->isNewImageReady()) {
         webServerMgr->clearNewImageReady();
+        WebServerManager::setDisplayStatus(DisplayUpdateStatus::UPDATING, "Refreshing e-Paper display...");
+        WebServerManager::setDisplayInProgress(true);
         Debugln("New image detected in loop. Displaying...");
-        displayMgr->displayImageFile(UPLOADED_IMAGE_PATH);
-        Debugln("Image display from loop complete.");
+        bool ok = displayMgr->displayImageFile(UPLOADED_IMAGE_PATH);
+        WebServerManager::setDisplayInProgress(false);
+        if (ok) {
+            WebServerManager::setDisplayStatus(DisplayUpdateStatus::SUCCESS, "Display updated successfully!");
+            Debugln("Image display from loop complete.");
+        } else {
+            WebServerManager::setDisplayStatus(DisplayUpdateStatus::ERROR, "Failed to display image file.");
+            Debugln("Image display failed.");
+        }
         hibernationMgr->resetActivityTimer();
         ledManager->setMode(LedMode::LED_MODE_IDLE);
     }

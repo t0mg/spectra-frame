@@ -4,6 +4,77 @@
 extern UMS3 ums3;
 #endif
 
+RTC_DATA_ATTR static bool rtcDisplayInProgress = false;
+RTC_DATA_ATTR static int rtcLastDisplayStatus = 0; // 0=IDLE, 1=UPDATING, 2=SUCCESS, 3=BROWNOUT, 4=ERROR
+RTC_DATA_ATTR static char rtcLastDisplayMessage[128] = "Idle";
+
+void WebServerManager::setDisplayStatus(DisplayUpdateStatus status, const char* message) {
+    rtcLastDisplayStatus = (int)status;
+    if (message) {
+        strncpy(rtcLastDisplayMessage, message, sizeof(rtcLastDisplayMessage) - 1);
+        rtcLastDisplayMessage[sizeof(rtcLastDisplayMessage) - 1] = '\0';
+    }
+}
+
+void WebServerManager::setDisplayInProgress(bool inProgress) {
+    rtcDisplayInProgress = inProgress;
+}
+
+bool WebServerManager::isDisplayInProgress() {
+    return rtcDisplayInProgress;
+}
+
+void WebServerManager::checkResetReason(esp_reset_reason_t reason) {
+    if (rtcDisplayInProgress) {
+        rtcDisplayInProgress = false;
+        if (reason == ESP_RST_BROWNOUT) {
+            rtcLastDisplayStatus = (int)DisplayUpdateStatus::BROWNOUT;
+            strncpy(rtcLastDisplayMessage, "Brownout reset during display refresh! Power rail voltage dropped.", sizeof(rtcLastDisplayMessage) - 1);
+        } else if (reason == ESP_RST_PANIC || reason == ESP_RST_INT_WDT || reason == ESP_RST_TASK_WDT) {
+            rtcLastDisplayStatus = (int)DisplayUpdateStatus::ERROR;
+            strncpy(rtcLastDisplayMessage, "Crash/watchdog reset during display refresh.", sizeof(rtcLastDisplayMessage) - 1);
+        } else {
+            rtcLastDisplayStatus = (int)DisplayUpdateStatus::ERROR;
+            strncpy(rtcLastDisplayMessage, "Unexpected reboot during display refresh.", sizeof(rtcLastDisplayMessage) - 1);
+        }
+    } else if (reason == ESP_RST_BROWNOUT) {
+        rtcLastDisplayStatus = (int)DisplayUpdateStatus::BROWNOUT;
+        strncpy(rtcLastDisplayMessage, "Brownout reset detected. Check power supply/battery.", sizeof(rtcLastDisplayMessage) - 1);
+    }
+    rtcLastDisplayMessage[sizeof(rtcLastDisplayMessage) - 1] = '\0';
+}
+
+const char* WebServerManager::getDisplayStatusString() {
+    switch ((DisplayUpdateStatus)rtcLastDisplayStatus) {
+        case DisplayUpdateStatus::UPDATING: return "updating";
+        case DisplayUpdateStatus::SUCCESS: return "success";
+        case DisplayUpdateStatus::BROWNOUT: return "brownout";
+        case DisplayUpdateStatus::ERROR: return "error";
+        default: return "idle";
+    }
+}
+
+const char* WebServerManager::getDisplayStatusMessage() {
+    return rtcLastDisplayMessage;
+}
+
+const char* WebServerManager::getResetReasonString(esp_reset_reason_t reason) {
+    switch (reason) {
+        case ESP_RST_UNKNOWN:    return "Unknown";
+        case ESP_RST_POWERON:    return "Power on";
+        case ESP_RST_EXT:        return "External pin";
+        case ESP_RST_SW:         return "Software";
+        case ESP_RST_PANIC:      return "Panic/exception";
+        case ESP_RST_INT_WDT:    return "Interrupt watchdog";
+        case ESP_RST_TASK_WDT:   return "Task watchdog";
+        case ESP_RST_WDT:        return "Other watchdog";
+        case ESP_RST_DEEPSLEEP:  return "Exiting deep sleep";
+        case ESP_RST_BROWNOUT:   return "Brownout";
+        case ESP_RST_SDIO:       return "SDIO";
+        default:                 return "Other";
+    }
+}
+
 WebServerManager::WebServerManager(ConfigManager& configMgr, DisplayManager& displayMgr,
                                  HibernationManager& hibernationMgr, LedManager& ledMgr,
                                  OtaManager& otaMgr)
@@ -63,6 +134,19 @@ void WebServerManager::setupHandlers() {
         JsonDocument doc;
         doc["value"] = touchValue;
         doc["threshold"] = _configMgr.getConfig().touchThreshold;
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
+
+    // API endpoint for display update status
+    _server.on("/api/display_status", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        _hibernationMgr.resetActivityTimer();
+        JsonDocument doc;
+        doc["status"] = getDisplayStatusString();
+        doc["message"] = getDisplayStatusMessage();
+        doc["inProgress"] = isDisplayInProgress();
+        doc["resetReason"] = getResetReasonString(esp_reset_reason());
         String response;
         serializeJson(doc, response);
         request->send(200, "application/json", response);
@@ -163,6 +247,9 @@ void WebServerManager::setupHandlers() {
         float batt_voltage = (analogReadMilliVolts(BATT_ADC_PIN) / 1000.0) * BATT_VOLTAGE_DIVIDER_RATIO;
         #endif
         doc["batteryVoltage"] = batt_voltage;
+        doc["displayStatus"] = getDisplayStatusString();
+        doc["displayMessage"] = getDisplayStatusMessage();
+        doc["resetReason"] = getResetReasonString(esp_reset_reason());
 
         String response;
         serializeJson(doc, response);
@@ -274,6 +361,7 @@ void WebServerManager::handleImageUpload(AsyncWebServerRequest *request, String 
 
         if (fileSize == FULL_IMAGE_SIZE) {
             request->send(200, "text/plain", "Image uploaded successfully. Displaying...");
+            setDisplayStatus(DisplayUpdateStatus::UPDATING, "Refreshing e-Paper display...");
             _newImageReady = true;
             _hibernationMgr.resetActivityTimer();
         } else {

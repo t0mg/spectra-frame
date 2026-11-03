@@ -346,7 +346,7 @@ void DisplayManager::sleepEPDHardware()
   _epdHardwareInitialized = false;
 }
 
-void DisplayManager::display()
+bool DisplayManager::display()
 {
   _hibernationManager.pause();
   Debugln("DisplayManager: Sending buffer to EPD (EPD_13IN3E_Display)...");
@@ -370,16 +370,17 @@ void DisplayManager::display()
   _ledManager.setMode(LedMode::LED_MODE_OFF);
   saveStateToRTC();
   _hibernationManager.resumeAndReset();
+  return true;
 }
 
-void DisplayManager::displayImageFile(const char *filePath)
+bool DisplayManager::displayImageFile(const char *filePath)
 {
   File imageFile = LittleFS.open(filePath, "r");
   if (!imageFile)
   {
     Debugf("DisplayManager: Failed to open image file: %s\n", filePath);
     showCenteredMessage("Error", "Could not open", "image file.", filePath); // This will call display()
-    return;
+    return false;
   }
   size_t bytesRead = imageFile.read(_imageBuffer, _bufferSize);
   imageFile.close();
@@ -388,11 +389,11 @@ void DisplayManager::displayImageFile(const char *filePath)
   {
     Debugf("DisplayManager: Failed to read full image. Read %zu, expected %lu.\n", bytesRead, (unsigned long)_bufferSize);
     showCenteredMessage("Error", "Image file read error.", filePath); // This will call display()
-    return;
+    return false;
   }
   Debugf("DisplayManager: Image %s loaded to buffer. Displaying...\n", filePath);
   _currentContentType = DisplayContentType::IMAGE_FILE;
-  this->display();
+  return this->display();
 }
 
 void DisplayManager::clearDisplayAndRefresh()

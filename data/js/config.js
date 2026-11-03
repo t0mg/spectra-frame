@@ -105,6 +105,23 @@ export async function sleepNow() {
 }
 
 /**
+ * Fetches the current display update status.
+ * @returns {Promise<object|null>} A promise that resolves to { status, message, inProgress, resetReason } or null on error.
+ */
+export async function getDisplayStatus() {
+  try {
+    const response = await fetch('/api/display_status', { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching display status:', error);
+    return null;
+  }
+}
+
+/**
  * Sets the display orientation on the device.
  * @param {string} orientation - The new orientation ('portrait' or 'landscape').
  * @returns {Promise<object>} A promise that resolves to an object { success: boolean, message: string }.

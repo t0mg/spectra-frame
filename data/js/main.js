@@ -112,6 +112,61 @@ function applyCanvasOrientation(orientation) {
     }
 }
 
+async function pollDisplayUpdateStatus() {
+  const startTime = Date.now();
+  const timeoutMs = 90000; // 90 seconds timeout
+  const pollIntervalMs = 2000; // Poll every 2 seconds
+
+  // Give ESP32 a short moment to enter display refresh in main loop
+  await new Promise(resolve => setTimeout(resolve, 1500));
+
+  while (Date.now() - startTime < timeoutMs) {
+    const elapsedSec = Math.round((Date.now() - startTime) / 1000);
+    const data = await Config.getDisplayStatus();
+
+    if (!data) {
+      // Possible brownout reboot causing temporary WiFi disconnection
+      UI.updateStatus(`Waiting for device response... (${elapsedSec}s)`);
+    } else {
+      if (data.status === 'success') {
+        UI.updateStatus(`Display updated successfully! (${elapsedSec}s)`);
+        UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
+        return;
+      }
+
+      if (data.status === 'brownout') {
+        const msg = data.message || 'Brownout reset detected during display refresh! Power supply/battery voltage dropped.';
+        UI.updateStatus(`Error: ${msg}`, true);
+        UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
+        return;
+      }
+
+      if (data.status === 'error') {
+        const msg = data.message || 'Display update failed.';
+        UI.updateStatus(`Error: ${msg}`, true);
+        UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
+        return;
+      }
+
+      if (data.inProgress || data.status === 'updating') {
+        UI.updateStatus(`Refreshing e-Paper display... (${elapsedSec}s)`);
+      } else if (data.status === 'idle') {
+        if (elapsedSec > 5) {
+          UI.updateStatus('Display update complete.');
+          UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
+          return;
+        }
+        UI.updateStatus(`Refreshing e-Paper display... (${elapsedSec}s)`);
+      }
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+  }
+
+  UI.updateStatus('Display update timed out waiting for completion.', true);
+  UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
+}
+
 const eventHandlers = {
   onFileUpload: (event) => {
     UI.updateStatus('');
@@ -279,14 +334,15 @@ const eventHandlers = {
             UI.updateStatus(`Uploading: ${Math.round(percentComplete)}%`);
           }
         };
-        xhr.onload = function () {
+        xhr.onload = async function () {
           UI.updateUploadProgress(100); // Ensure it hides
           if (xhr.status >= 200 && xhr.status < 300) {
-            UI.updateStatus(`Upload successful! Server: ${xhr.responseText}`);
+            UI.updateStatus('Upload complete! Refreshing e-Paper display...');
+            await pollDisplayUpdateStatus();
           } else {
             UI.updateStatus(`Error: Upload failed. Status ${xhr.status}: ${xhr.responseText}`, true);
+            UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
           }
-          UI.updateControlStates(dom, { isProcessing: false, currentIsBinMode: (originalImage === null) });
         };
         xhr.onerror = function () {
           UI.updateUploadProgress(100);
@@ -446,6 +502,17 @@ function stopTouchPolling() {
   }
 }
 
+async function checkInitialDisplayStatus() {
+  const data = await Config.getDisplayStatus();
+  if (data) {
+    if (data.status === 'brownout') {
+      UI.updateStatus(`Warning: ${data.message || 'Previous display update caused a brownout reset!'}`, true);
+    } else if (data.status === 'error') {
+      UI.updateStatus(`Notice: Previous display update failed (${data.message || 'Error'}).`, true);
+    }
+  }
+}
+
 function init() {
   dom = UI.getDomElements();
   ctx = UI.getCanvasContext(dom);
@@ -456,6 +523,7 @@ function init() {
   UI.applyCanvasFitClass(dom, UI.getSelectedValues(dom).fitToScreen);
   if (dom.advancedControlsContainer) dom.advancedControlsContainer.style.display = 'none'; // Default hidden
   loadDeviceStatus();
+  checkInitialDisplayStatus();
 
   // Listen for the custom event from ui.js to start/stop polling
   document.addEventListener('tabShown', (e) => {
