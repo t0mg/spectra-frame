@@ -18,6 +18,7 @@ A battery powered, WiFi-enabled Spectra6 color E-Paper display frame with web co
 - **Microcontroller:** The code is developed for ESP32-S3.
   - I'm now using an [Unexpected Maker ProS3](https://esp32s3.com/pros3.html), an ESP32-S3 based board featuring 16MB Flash, 8MB PSRAM, built-in LiPo charging with PicoBlade connector, 2 LDOs, and ultra-low deep sleep current. The ProS3's onboard RGB LED uses GPIO 18. 
   - The project can work with any generic ESP32-S3-DevKitC-1 board with PSRAM module and enough Flash storage to store and handle the high resolution image to be displayed. I started this project with an n16r8 clone (16Mb flash, 8Mb RAM) which has its RGB led wired differently from the reference (GPIO 48 instead of GPIO 38).
+- **Dedicated Display Buck Converter:** [Adafruit TPS62827 3.3V Buck Converter Breakout (PID 4920)](https://www.adafruit.com/product/4920). The 13.3" Spectra6 display draws high peak current (up to 1.5–2A during full refresh waveforms, particularly on dense dithered images), which overloads typical ESP32 onboard LDO regulators and triggers brownout resets. This high-efficiency synchronous buck converter powers the display directly from battery voltage (`BAT` / 3.7V LiPo). Its Enable (`EN`) pin is driven by `GPIO 16`, allowing display power to be completely cut off during deep sleep to eliminate quiescent current.
 - **Power Supply:** 
   - A LiPo battery can be connected directly to the ProS3's PicoBlade battery connector for integrated charging and power management.
   - Alternatively, if the microcontroller board doesn't have built in battery managment, a 3.2V LiFePO4 battery cell can be connected directly to the 3v3 and GND pins thanks to its compatible voltage range (add a Schottky diode to protect from wrong polarity). 
@@ -33,32 +34,50 @@ A battery powered, WiFi-enabled Spectra6 color E-Paper display frame with web co
 
 ### Wiring
 
+#### Adafruit 4920 (TPS62827 3.3V Buck Converter)
+
+The Adafruit 4920 provides dedicated 3.3V power (up to 2A) to the Waveshare HAT, bypassing the ESP32's onboard LDO to prevent brownout crashes during refresh spikes.
+
+| Module Pin | Connected To | Notes |
+|---|---|---|
+| VIN | ProS3 `BAT` / Battery (+) | Input voltage (3.0V–5.5V). Connect to LiPo battery (+) or ProS3 `BAT` pin. |
+| GND | GND | Common ground with ESP32 and E-Paper HAT. |
+| 3V3 | E-Paper `VCC` (Red wire) | Regulated 3.3V output to power the Waveshare HAT. |
+| EN | ESP32 GPIO 16 (`EPD_POW_EN_PIN`) | Enable pin (active HIGH, default pulled up to VIN). Driven LOW by ESP32 to cut power during deep sleep. |
+| PG | *Not connected* | Power Good output (leave floating). |
+
 #### E-Paper display
 
-| e-Paper Pin | Cable color | ESP32 Pin | Notes |
+| e-Paper Pin | Cable color | Connected To | Notes |
 |---|---|---|---|
-| VCC | Red | 3.3V | Power supply voltage. |
-| GND | Black | GND | Common ground.. |
-| DIN | Blue | GPIO 35 (MOSI) | SPI Data line from ESP32 to the display. |
-| CLK | Yellow | GPIO 36 (SCLK) | Clock line of the SPI bus. |
-| CS_M | Orange | GPIO 34 | Chip Select for the display driver board. |
-| CS_S | Green | GPIO 9 | Chip Select for the built in flash storage. |
-| DC | White | GPIO 8 | Data/Command select. |
-| RST | Purple | GPIO 7 | Display reset. |
-| BUSY | Brown | GPIO 6 | Busy status from display to ESP32. Needs to be an input. |
-| PWR | Grey | GPIO 5 | Display power control. |
+| VCC | Red | Adafruit 4920 `3V3` | Dedicated 3.3V supply from buck converter (do **not** power from ESP32 3.3V pin!). |
+| GND | Black | GND | Common ground. |
+| DIN | Blue | ESP32 GPIO 35 (MOSI) | SPI Data line from ESP32 to the display. |
+| CLK | Yellow | ESP32 GPIO 36 (SCLK) | Clock line of the SPI bus. |
+| CS_M | Orange | ESP32 GPIO 34 | Chip Select for the display driver board. |
+| CS_S | Green | ESP32 GPIO 9 | Chip Select for the built-in flash storage. |
+| DC | White | ESP32 GPIO 8 | Data/Command select. |
+| RST | Purple | ESP32 GPIO 7 | Display reset. |
+| BUSY | Brown | ESP32 GPIO 6 | Busy status from display to ESP32 (input). |
+| PWR | Grey | ESP32 GPIO 5 (`EPD_PWR_PIN`) | Display onboard power switch control. |
 
 #### Other
 
-- LiFePO battery powers the ESP32 directly on its 3v3 pin.
-- A copper tape is wired to GPIO 4 to act as a touch sensor
-- A high impedance voltage divider is set up and read on GPIO 14 to monitor the battery level. I used 150kΩ (R1) and 1MΩ (R2) resistors.
+- LiFePO4 battery powers the ESP32 directly on its 3v3 pin (if not using ProS3 with LiPo).
+- A copper tape is wired to GPIO 4 to act as a touch sensor.
+- A high impedance voltage divider is set up and read on GPIO 14 to monitor the battery level (150kΩ R1 and 1MΩ R2 resistors, when not using ProS3's internal VBAT sense).
 
-#### Notes
+#### Power Management & Sequencing Notes
 
-- The ProS3's onboard RGB LED is on GPIO 18 (see pinout reference below)
-- The ProS3 has ultra-low deep sleep current, making it ideal for battery-powered operation
-- GPIO4 should be connected to some kind of capacitive sensor (a strip of copper tape in my case)
+- **Dual Power Gating:** Two GPIOs coordinate display power:
+  - `GPIO 16` (`EPD_POW_EN_PIN`) controls the Adafruit TPS62827 buck converter `EN` pin to turn the main 3.3V rail on/off.
+  - `GPIO 5` (`EPD_PWR_PIN`) controls the Waveshare HAT's onboard power switch.
+- **Deep Sleep Power Lock:** On boot and in deep sleep, `GPIO 16` is held `LOW` using `gpio_deep_sleep_hold_en()` to overcome the TPS62827's onboard pull-up resistor on `EN`, ensuring the buck converter stays completely powered down.
+- **Back-Powering Prevention:** While the TPS62827 is OFF (`GPIO 16` LOW), all SPI and control pins (`CS_M`, `CS_S`, `DC`, `RST`, `SCK`, `MOSI`) are kept `LOW` and `BUSY` is set to `INPUT` without pull-up to prevent current leaking into the unpowered HAT through internal ESD protection diodes.
+- **Bulk Capacitance:** If powering via battery or USB, adding a bulk capacitor (220µF–470µF) across the Waveshare HAT's `VCC` and `GND` lines is recommended to absorb sharp current transients during the `DRF` (Display Refresh) phase on heavily dithered images.
+- The ProS3's onboard RGB LED is on GPIO 18 (see pinout reference below).
+- The ProS3 has ultra-low deep sleep current, making it ideal for battery-powered operation.
+- GPIO 4 should be connected to some kind of capacitive sensor (a strip of copper tape in my case).
 
 ### Reference pinouts
 

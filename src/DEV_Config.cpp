@@ -30,22 +30,28 @@
 #include <SPI.h>
 #include "DEV_Config.h"
 
+static const SPISettings epdSpiSettings(4000000, MSBFIRST, SPI_MODE0);
+
 void GPIO_Config(void)
 {
-  pinMode(EPD_BUSY_PIN, INPUT_PULLUP);  // EPD Busy -> Input with Pull-up
-  pinMode(EPD_RST_PIN, OUTPUT);  // EPD Reset -> Output
-  pinMode(EPD_DC_PIN, OUTPUT);   // EPD Data/Command -> Output
-  pinMode(EPD_PWR_PIN, OUTPUT);  // EPD Power -> Output
-  pinMode(EPD_POW_EN_PIN, OUTPUT); // EPD Power Enable -> Output
+  pinMode(EPD_BUSY_PIN, INPUT); // No pull-up while HAT power is off
+  pinMode(EPD_RST_PIN, OUTPUT);
+  pinMode(EPD_DC_PIN, OUTPUT);
+  pinMode(EPD_PWR_PIN, OUTPUT);
+  pinMode(EPD_POW_EN_PIN, OUTPUT);
 
-  pinMode(EPD_SCK_PIN, OUTPUT);  // SPI Clock -> Output
-  pinMode(EPD_MOSI_PIN, OUTPUT); // SPI MOSI -> Output
-  pinMode(EPD_CS_M_PIN, OUTPUT); // EPD CS Master -> Output
+  pinMode(EPD_SCK_PIN, OUTPUT);
+  pinMode(EPD_MOSI_PIN, OUTPUT);
+  pinMode(EPD_CS_M_PIN, OUTPUT);
   pinMode(EPD_CS_S_PIN, OUTPUT);
 
-  digitalWrite(EPD_CS_M_PIN, HIGH);
-  digitalWrite(EPD_CS_S_PIN, HIGH);
+  // Keep all lines LOW while TPS62827 (EPD_POW_EN_PIN) is OFF to prevent back-powering
+  digitalWrite(EPD_CS_M_PIN, LOW);
+  digitalWrite(EPD_CS_S_PIN, LOW);
+  digitalWrite(EPD_DC_PIN, LOW);
+  digitalWrite(EPD_RST_PIN, LOW);
   digitalWrite(EPD_SCK_PIN, LOW);
+  digitalWrite(EPD_MOSI_PIN, LOW);
   digitalWrite(EPD_PWR_PIN, LOW);
   digitalWrite(EPD_POW_EN_PIN, LOW);
 
@@ -79,11 +85,7 @@ UBYTE DEV_Module_Init(void)
   // Initialize serial communication for debugging
   Serial.begin(115200);
 
-  // Initialize SPI hardware - reduced speed for stability during high-power refresh
-  SPI.setDataMode(SPI_MODE0);
-  SPI.setBitOrder(MSBFIRST);
-  SPI.setClockDivider(SPI_CLOCK_DIV8); // 10MHz on 80MHz clock (better stability than DIV4)
-  SPI.begin(EPD_SCK_PIN, -1, EPD_MOSI_PIN, -1); // Explicit pin mapping for ProS3
+  SPI.begin(EPD_SCK_PIN, -1, EPD_MOSI_PIN, -1);
 
   return 0;
 }
@@ -95,18 +97,9 @@ function:
 
 void DEV_SPI_WriteByte(UBYTE data)
 {
-  // Original bit-banging implementation - replace with hardware SPI
-  //  for (int i = 0; i < 8; i++) {
-  //   if ((data & 0x80) == 0)
-  //     digitalWrite(EPD_MOSI_PIN, GPIO_PIN_RESET);
-  //   else
-  //     digitalWrite(EPD_MOSI_PIN, GPIO_PIN_SET);
-
+  SPI.beginTransaction(epdSpiSettings);
   SPI.transfer(data);
-    // data <<= 1;
-    // digitalWrite(EPD_SCK_PIN, GPIO_PIN_SET);
-    // digitalWrite(EPD_SCK_PIN, GPIO_PIN_RESET);
-  // }
+  SPI.endTransaction();
 }
 
 UBYTE DEV_SPI_ReadByte()
@@ -130,14 +123,9 @@ UBYTE DEV_SPI_ReadByte()
 
 void DEV_SPI_Write_nByte(UBYTE *pData, UDOUBLE len)
 {
-  for (UDOUBLE i = 0; i < len; i++)
-  { // Matched i to UDOUBLE type of len
-    DEV_SPI_WriteByte(pData[i]);
-    // if ((i > 0) && (i % 512 == 0))
-    // { // Yield periodically, e.g., every 512 bytes
-    //   yield();
-    // }
-  }
+  SPI.beginTransaction(epdSpiSettings);
+  SPI.transferBytes(pData, NULL, len);
+  SPI.endTransaction();
 }
 
 void DEV_Module_Exit(void)

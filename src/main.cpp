@@ -59,7 +59,12 @@ void printWakeupReason() {
         case ESP_SLEEP_WAKEUP_EXT0:      Debugln("Wakeup caused by external signal using RTC_IO"); break;
         case ESP_SLEEP_WAKEUP_EXT1:      Debugln("Wakeup caused by external signal using RTC_CNTL"); break;
         case ESP_SLEEP_WAKEUP_TIMER:     Debugln("Wakeup caused by timer"); break;
-        case ESP_SLEEP_WAKEUP_TOUCHPAD:  Debugln("Wakeup caused by touchpad"); break;
+        case ESP_SLEEP_WAKEUP_TOUCHPAD: {
+            int touchPad = esp_sleep_get_touchpad_wakeup_status();
+            Debugf("Wakeup caused by touchpad: pad %d, current touchRead: %d (configured threshold: %d)\n",
+                   touchPad, touchRead(TOUCH_PIN), configMgr.getConfig().touchThreshold);
+            break;
+        }
         case ESP_SLEEP_WAKEUP_ULP:       Debugln("Wakeup caused by ULP program"); break;
         default:                         Debugf("Wakeup was not caused by deep sleep: %d\n", wakeupReason); break;
     }
@@ -81,7 +86,8 @@ void showWebUIQRcode() {
 void setup() {
     Serial.begin(115200);
 
-    // Set up the Adafruit 4920 enable pin to lock during hibernation
+    // Release hold on Adafruit 4920 enable pin
+    gpio_deep_sleep_hold_dis();
     gpio_hold_dis(EPD_POW_EN_PIN);
     gpio_reset_pin(EPD_POW_EN_PIN);
     gpio_set_direction(EPD_POW_EN_PIN, GPIO_MODE_OUTPUT);
@@ -133,7 +139,11 @@ void setup() {
     wifiMgr = new WiFiManager(configMgr, *displayMgr, *ledManager);
     webServerMgr = new WebServerManager(configMgr, *displayMgr, *hibernationMgr, *ledManager, *otaManager);
 
-    touchSleepWakeUpEnable(TOUCH_PIN, TOUCH_WAKEUP_DELTA);
+    int ambientTouch = touchRead(TOUCH_PIN);
+    int initialThreshold = max((int)configMgr.getConfig().touchThreshold, ambientTouch + TOUCH_WAKEUP_DELTA);
+    touchSleepWakeUpEnable(TOUCH_PIN, initialThreshold);
+    Debugf("Touch sleep wake-up enabled on pin %d with threshold %d (ambient: %d, config: %d)\n",
+           TOUCH_PIN, initialThreshold, ambientTouch, configMgr.getConfig().touchThreshold);
 
     Debugln("Connecting to WiFi.");
     if (configMgr.getConfig().ssid.length() > 0) {
@@ -198,6 +208,10 @@ void loop() {
                 displayMgr->displayImageFile(UPLOADED_IMAGE_PATH);
             }
             ledManager->setMode(LedMode::LED_MODE_OFF);
+            int ambientTouch = touchRead(TOUCH_PIN);
+            int sleepThreshold = max((int)configMgr.getConfig().touchThreshold, ambientTouch + TOUCH_WAKEUP_DELTA);
+            touchSleepWakeUpEnable(TOUCH_PIN, sleepThreshold);
+            Debugf("Entering deep sleep. Touch wakeup threshold set to %d (ambient: %d)\n", sleepThreshold, ambientTouch);
             hibernationMgr->goToDeepSleep();
         }
     }

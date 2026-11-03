@@ -80,7 +80,9 @@ static void EPD_13IN3E_CS_ALL(UBYTE Value)
 
 static void EPD_13IN3E_SPI_Sand(UBYTE Cmd, const UBYTE *buf, UDOUBLE Len)
 {
+  DEV_Digital_Write(EPD_DC_PIN, 0);
   DEV_SPI_WriteByte(Cmd);
+  DEV_Digital_Write(EPD_DC_PIN, 1);
   DEV_SPI_Write_nByte((UBYTE *)buf, Len);
 }
 
@@ -110,6 +112,7 @@ parameter:
 
 static void EPD_13IN3E_SendCommand(UBYTE Reg)
 {
+  DEV_Digital_Write(EPD_DC_PIN, 0);
   DEV_SPI_WriteByte(Reg);
 }
 
@@ -120,10 +123,12 @@ parameter:
 ******************************************************************************/
 static void EPD_13IN3E_SendData(UBYTE Reg)
 {
+  DEV_Digital_Write(EPD_DC_PIN, 1);
   DEV_SPI_WriteByte(Reg);
 }
 static void EPD_13IN3E_SendData2(const UBYTE *buf, uint32_t Len)
 {
+  DEV_Digital_Write(EPD_DC_PIN, 1);
   DEV_SPI_Write_nByte((UBYTE *)buf, Len);
 }
 
@@ -134,10 +139,15 @@ parameter:
 static void EPD_13IN3E_ReadBusyH(void)
 {
   Debug("e-Paper busy\r\n");
+  uint32_t start = millis();
   while (!DEV_Digital_Read(EPD_BUSY_PIN))
   { // LOW: busy, HIGH: idle
     DEV_Delay_ms(10);
-    // Debug("e-Paper busy release\r\n");
+    if (millis() - start > 60000)
+    {
+      Debug("ERROR: e-Paper BUSY timeout (60s)!\r\n");
+      break;
+    }
   }
   DEV_Delay_ms(20);
   Debug("e-Paper busy release\r\n");
@@ -177,11 +187,21 @@ parameter:
 ******************************************************************************/
 void EPD_13IN3E_Init(void)
 {
-  DEV_Digital_Write(EPD_PWR_PIN, 1);
+  // 1. Enable Adafruit TPS62827 3.3V buck converter first
   DEV_Digital_Write(EPD_POW_EN_PIN, 1);
-  DEV_Delay_ms(50);
+  DEV_Delay_ms(30); // Let 3.3V VCC rail stabilize on the HAT
+
+  // 2. Now that VCC is live, pull CS pins HIGH and enable BUSY pull-up
+  pinMode(EPD_BUSY_PIN, INPUT_PULLUP);
+  EPD_13IN3E_CS_ALL(1);
+
+  // 3. Enable the Waveshare HAT onboard power switch
+  DEV_Digital_Write(EPD_PWR_PIN, 1);
+  DEV_Delay_ms(100);
+
+  // 4. Hardware Reset and wait for COG ready
   EPD_13IN3E_Reset();
-  //    EPD_13IN3E_ReadBusyH();
+  EPD_13IN3E_ReadBusyH();
 
   DEV_Digital_Write(EPD_CS_M_PIN, 0);
   EPD_13IN3E_SPI_Sand(AN_TM, AN_TM_V, sizeof(AN_TM_V));
@@ -487,11 +507,35 @@ parameter:
 ******************************************************************************/
 void EPD_13IN3E_Sleep(void)
 {
+  // If power is already off, just ensure pins are safely LOW and return
+  if (DEV_Digital_Read(EPD_POW_EN_PIN) == 0)
+  {
+    DEV_Digital_Write(EPD_PWR_PIN, 0);
+    EPD_13IN3E_CS_ALL(0);
+    DEV_Digital_Write(EPD_DC_PIN, 0);
+    DEV_Digital_Write(EPD_RST_PIN, 0);
+    DEV_Digital_Write(EPD_SCK_PIN, 0);
+    DEV_Digital_Write(EPD_MOSI_PIN, 0);
+    pinMode(EPD_BUSY_PIN, INPUT);
+    return;
+  }
+
   EPD_13IN3E_CS_ALL(0);
   EPD_13IN3E_SendCommand(0x07); // DEEP_SLEEP
-  EPD_13IN3E_SendData(0XA5);
+  EPD_13IN3E_SendData(0xA5);
   EPD_13IN3E_CS_ALL(1);
   DEV_Delay_ms(100);
+
+  // Cut HAT switch first, then disable TPS62827 buck converter
   DEV_Digital_Write(EPD_PWR_PIN, 0);
+  DEV_Delay_ms(10);
   DEV_Digital_Write(EPD_POW_EN_PIN, 0);
+
+  // Drive all outputs LOW and remove BUSY pull-up so we don't back-power the unpowered HAT
+  EPD_13IN3E_CS_ALL(0);
+  DEV_Digital_Write(EPD_DC_PIN, 0);
+  DEV_Digital_Write(EPD_RST_PIN, 0);
+  DEV_Digital_Write(EPD_SCK_PIN, 0);
+  DEV_Digital_Write(EPD_MOSI_PIN, 0);
+  pinMode(EPD_BUSY_PIN, INPUT);
 }

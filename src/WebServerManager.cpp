@@ -76,7 +76,9 @@ void WebServerManager::setupHandlers() {
             if (newThreshold > 0 && newThreshold < 100000) {
                 _configMgr.getConfig().touchThreshold = newThreshold;
                 if (_configMgr.save()) {
-                    touchSleepWakeUpEnable(TOUCH_PIN, newThreshold);
+                    int ambientTouch = touchRead(TOUCH_PIN);
+                    int sleepThreshold = max(newThreshold, ambientTouch + 2500);
+                    touchSleepWakeUpEnable(TOUCH_PIN, sleepThreshold);
                     request->send(200, "text/plain", "Touch threshold updated and saved.");
                 } else {
                     request->send(500, "text/plain", "Failed to save configuration.");
@@ -136,6 +138,9 @@ void WebServerManager::setupHandlers() {
         request->send(200, "text/plain", "Initiating deep sleep...");
         delay(100);
         _ledMgr.setMode(LedMode::LED_MODE_OFF);
+        int ambientTouch = touchRead(TOUCH_PIN);
+        int sleepThreshold = max((int)_configMgr.getConfig().touchThreshold, ambientTouch + 2500);
+        touchSleepWakeUpEnable(TOUCH_PIN, sleepThreshold);
         _hibernationMgr.goToDeepSleep();
     });
 

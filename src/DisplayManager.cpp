@@ -362,10 +362,10 @@ void DisplayManager::display()
 
   initializeEPDHardwareIfNeeded();
   _ledManager.setMode(LedMode::LED_MODE_EPD_POWERED);
-  sleep(10);
+  DEV_Delay_ms(10);
   EPD_13IN3E_Display(_imageBuffer); // Display the content of the internal buffer
   Debugln("DisplayManager: EPD display complete.");
-  sleep(100);
+  DEV_Delay_ms(100);
   sleepEPDHardware();
   _ledManager.setMode(LedMode::LED_MODE_OFF);
   saveStateToRTC();

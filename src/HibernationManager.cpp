@@ -2,6 +2,7 @@
 #include "Debug.h"
 #include "EPD_13in3e.h" // For EPD_13IN3E_Sleep
 #include "DEV_Config.h" // For DEV_Module_Exit
+#include "driver/gpio.h"
 
 #define HIBERNATION_MIN_TIMEOUT_MS 10000 // 10 secondes minimum
 
@@ -47,13 +48,16 @@ bool HibernationManager::shouldGoToSleep() {
 void HibernationManager::goToDeepSleep() {
     Debugln("Hibernation: Preparing for deep sleep...");
 
-    // Wait for E-Paper to be idle before sleeping
-    Debug("Hibernation: Checking E-Paper busy status... ");
-    while (!DEV_Digital_Read(EPD_BUSY_PIN)) { // LOW is busy
-        Debug(".");
-        delay(100);
+    // Wait for E-Paper to be idle before sleeping (only if HAT is currently powered)
+    if (DEV_Digital_Read(EPD_POW_EN_PIN) != 0) {
+        Debug("Hibernation: Checking E-Paper busy status... ");
+        uint32_t start = millis();
+        while (!DEV_Digital_Read(EPD_BUSY_PIN) && (millis() - start < 5000)) { // LOW is busy
+            Debug(".");
+            delay(100);
+        }
+        Debugln(" E-Paper is idle.");
     }
-    Debugln(" E-Paper is idle.");
 
     Debugln("Hibernation: Putting E-Paper to Sleep (EPD_13IN3E_Sleep)...");
     EPD_13IN3E_Sleep(); 
@@ -66,10 +70,11 @@ void HibernationManager::goToDeepSleep() {
     Serial.flush(); 
     #endif
     
-    // Lock the Adafruit 4920 enable pin
+    // Lock the Adafruit 4920 enable pin during deep sleep
     gpio_hold_en(EPD_POW_EN_PIN);
     gpio_pullup_dis(EPD_POW_EN_PIN);
     gpio_pulldown_en(EPD_POW_EN_PIN);
+    gpio_deep_sleep_hold_en();
     
     esp_deep_sleep_start();
 }
