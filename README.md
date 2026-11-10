@@ -1,6 +1,8 @@
 # SpectraFrame
 
-A battery powered, WiFi-enabled Spectra6 color E-Paper display frame with web configuration, image upload UI, and more.
+A battery powered, WiFi-enabled 13 inch Spectra6 color E-Paper display frame with web configuration, image upload UI, and more.
+
+Build video and quick demo on YouTube: https://youtu.be/OTaD_8vVjbQ
 
 ## Features
 
